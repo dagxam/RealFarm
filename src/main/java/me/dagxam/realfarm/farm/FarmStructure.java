@@ -3,6 +3,7 @@ package me.dagxam.realfarm.farm;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.Levelled;
 
 public final class FarmStructure {
     private final World world;
@@ -34,20 +35,22 @@ public final class FarmStructure {
     public Block cauldron() { return cauldron; }
     public Block composter() { return composter; }
 
-    public boolean hasCauldron() {
-        return cauldron != null;
-    }
-
-    public boolean hasComposter() {
-        return composter != null;
-    }
+    public boolean hasCauldron() { return cauldron != null; }
+    public boolean hasComposter() { return composter != null; }
 
     public boolean contains(int x, int z) {
         return x > minX && x < maxX && z > minZ && z < maxZ;
     }
 
     public boolean isWatered() {
-        return cauldron != null && cauldron.getType() == Material.WATER_CAULDRON;
+        if (cauldron == null || cauldron.getType() != Material.WATER_CAULDRON) return false;
+        if (!(cauldron.getBlockData() instanceof Levelled levelled)) return false;
+        return levelled.getLevel() >= levelled.getMaximumLevel();
+    }
+
+    public boolean isComposterFull() {
+        if (composter == null || !(composter.getBlockData() instanceof Levelled levelled)) return false;
+        return levelled.getLevel() >= levelled.getMaximumLevel();
     }
 
     public String id() {

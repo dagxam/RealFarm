@@ -8,7 +8,7 @@ api-version: '26.2'
 commands:
   realfarm:
     description: Управление RealFarm
-    usage: /realfarm <reload|info>
+    usage: /realfarm <reload|info|status>
     permission: realfarm.admin
 permissions:
   realfarm.admin:

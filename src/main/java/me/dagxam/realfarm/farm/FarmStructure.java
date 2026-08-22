@@ -38,6 +38,11 @@ public final class FarmStructure {
     public boolean hasCauldron() { return cauldron != null; }
     public boolean hasComposter() { return composter != null; }
 
+    /** Поле активно только при наличии обеих систем и полном запасе воды и удобрения. */
+    public boolean isActive() {
+        return hasCauldron() && hasComposter() && isWatered() && isComposterFull();
+    }
+
     public boolean contains(int x, int z) {
         return x > minX && x < maxX && z > minZ && z < maxZ;
     }

@@ -38,24 +38,51 @@ public final class FarmStructure {
     public boolean hasCauldron() { return cauldron != null; }
     public boolean hasComposter() { return composter != null; }
 
-    /** Поле активно только при наличии обеих систем и полном запасе воды и удобрения. */
+    /** Поле активно, когда есть хотя бы немного воды и хотя бы немного костной муки. */
     public boolean isActive() {
-        return hasCauldron() && hasComposter() && isWatered() && isComposterFull();
+        return hasCauldron() && hasComposter() && isWatered() && hasFertilizer();
     }
 
     public boolean contains(int x, int z) {
         return x > minX && x < maxX && z > minZ && z < maxZ;
     }
 
+    /** Достаточно любого уровня воды в котле, не требуется полное заполнение. */
     public boolean isWatered() {
         if (cauldron == null || cauldron.getType() != Material.WATER_CAULDRON) return false;
         if (!(cauldron.getBlockData() instanceof Levelled levelled)) return false;
-        return levelled.getLevel() >= levelled.getMaximumLevel();
+        return levelled.getLevel() > levelled.getMinimumLevel();
+    }
+
+    /** Достаточно любого количества костной муки в компостере. */
+    public boolean hasFertilizer() {
+        if (composter == null || !(composter.getBlockData() instanceof Levelled levelled)) return false;
+        return levelled.getLevel() > levelled.getMinimumLevel();
     }
 
     public boolean isComposterFull() {
         if (composter == null || !(composter.getBlockData() instanceof Levelled levelled)) return false;
         return levelled.getLevel() >= levelled.getMaximumLevel();
+    }
+
+    public int waterLevel() {
+        if (cauldron == null || !(cauldron.getBlockData() instanceof Levelled levelled)) return 0;
+        return levelled.getLevel();
+    }
+
+    public int waterMaximumLevel() {
+        if (cauldron == null || !(cauldron.getBlockData() instanceof Levelled levelled)) return 0;
+        return levelled.getMaximumLevel();
+    }
+
+    public int fertilizerLevel() {
+        if (composter == null || !(composter.getBlockData() instanceof Levelled levelled)) return 0;
+        return levelled.getLevel();
+    }
+
+    public int fertilizerMaximumLevel() {
+        if (composter == null || !(composter.getBlockData() instanceof Levelled levelled)) return 0;
+        return levelled.getMaximumLevel();
     }
 
     public String id() {

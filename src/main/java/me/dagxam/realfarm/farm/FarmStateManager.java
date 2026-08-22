@@ -32,8 +32,7 @@ public final class FarmStateManager {
     }
 
     public boolean isFertilizerActive(FarmStructure farm) {
-        Long ends = fertilizerEnds.get(farm.id());
-        return ends != null && ends > farm.world().getFullTime();
+        return farm.hasFertilizer();
     }
 
     public long getWaterRemaining(FarmStructure farm) {
@@ -72,7 +71,7 @@ public final class FarmStateManager {
                     if (cauldron != null) {
                         Block composter = findAdjacentComposter(cauldron);
                         if (composter != null && composter.getBlockData() instanceof Levelled levelled) {
-                            levelled.setLevel(0);
+                            levelled.setLevel(levelled.getMinimumLevel());
                             composter.setBlockData(levelled);
                         }
                     }
@@ -98,7 +97,7 @@ public final class FarmStateManager {
     private void refreshComposter(FarmStructure farm) {
         if (!farm.hasComposter()) return;
         String id = farm.id();
-        if (farm.isComposterFull()) {
+        if (farm.hasFertilizer()) {
             fertilizerEnds.computeIfAbsent(id, ignored -> farm.world().getFullTime() + randomDays(
                     "fertilizer.duration-days-min", 3,
                     "fertilizer.duration-days-max", 5
@@ -109,8 +108,8 @@ public final class FarmStateManager {
     }
 
     public void activateComposter(FarmStructure farm) {
-        if (!farm.hasComposter() || !farm.isComposterFull()) return;
-        fertilizerEnds.put(farm.id(), farm.world().getFullTime() + randomDays(
+        if (!farm.hasComposter() || !farm.hasFertilizer()) return;
+        fertilizerEnds.computeIfAbsent(farm.id(), ignored -> farm.world().getFullTime() + randomDays(
                 "fertilizer.duration-days-min", 3,
                 "fertilizer.duration-days-max", 5
         ));

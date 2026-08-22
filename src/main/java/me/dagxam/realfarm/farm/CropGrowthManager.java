@@ -17,10 +17,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
-/**
- * Управляет стадиями роста культур, зарегистрированных в CropRegistry.
- * Обычный случайный рост Minecraft для культур внутри RealFarm отменяется.
- */
+/** Управляет стадиями роста культур, зарегистрированных в CropRegistry. */
 public final class CropGrowthManager {
     private static final long DAY_TICKS = 24_000L;
 
@@ -86,16 +83,19 @@ public final class CropGrowthManager {
             }
 
             FarmStructure farm = validator.findFarm(block);
-            if (farm == null || !farm.hasCauldron() || !farm.isWatered()) continue;
-
+            if (farm == null) continue;
             farmStateManager.refresh(farm);
+
+            // Рост разрешён только на полностью активном поле:
+            // есть котёл, есть компостер, полная вода и полный компостер.
+            if (!farm.isActive()) continue;
+
             CropState state = crops.get(key);
             if (state == null) continue;
             long now = world.getFullTime();
             if (now < state.nextGrowthTick()) continue;
 
-            boolean fertilizer = farmStateManager.isFertilizerActive(farm);
-            int growth = fertilizer ? Math.max(1, plugin.getConfig().getInt("fertilizer.growth-multiplier", 2)) : 1;
+            int growth = Math.max(1, plugin.getConfig().getInt("fertilizer.growth-multiplier", 2));
             int newAge = Math.min(ageable.getMaximumAge(), ageable.getAge() + growth);
             ageable.setAge(newAge);
             block.setBlockData(ageable);
@@ -105,7 +105,7 @@ public final class CropGrowthManager {
                 continue;
             }
 
-            long nextInterval = fertilizer ? Math.max(100L, state.stageTicks() / growth) : state.stageTicks();
+            long nextInterval = Math.max(100L, state.stageTicks() / growth);
             crops.put(key, new CropState(state.totalTicks(), state.stageTicks(), now + nextInterval));
         }
         save();

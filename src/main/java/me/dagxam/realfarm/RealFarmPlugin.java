@@ -30,7 +30,7 @@ public final class RealFarmPlugin extends JavaPlugin {
 
         getServer().getScheduler().runTaskTimer(this, farmStateManager::tick, 200L, 200L);
         getServer().getScheduler().runTaskTimer(this, cropGrowthManager::tick, 100L, 100L);
-        getServer().getScheduler().runTaskTimer(this, farmListener::tick, 20L, 10L);
+        getServer().getScheduler().runTaskTimer(this, farmListener::tick, 20L, 20L);
 
         getLogger().info("RealFarm включён.");
         getLogger().info("Система замкнутых пашен, котлов, воды и компостеров активна.");

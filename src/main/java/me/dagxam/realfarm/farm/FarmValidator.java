@@ -6,30 +6,35 @@ import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 
 public final class FarmValidator {
+    private final int minSize;
     private final int maxSize;
 
-    public FarmValidator(int maxSize) {
-        this.maxSize = Math.max(3, maxSize);
+    public FarmValidator(int minSize, int maxSize) {
+        this.minSize = Math.max(3, minSize);
+        this.maxSize = Math.max(this.minSize, maxSize);
     }
 
-    public FarmStructure findFarm(Block cropBlock) {
-        World world = cropBlock.getWorld();
-        int surfaceY = cropBlock.getY() - 1;
-        int cropX = cropBlock.getX();
-        int cropZ = cropBlock.getZ();
+    public FarmStructure findFarm(Block block) {
+        return findFarmAt(worldBlock(block), block.getY());
+    }
 
-        for (int size = 3; size <= maxSize; size++) {
-            int minStartX = cropX - (size - 2);
-            int minEndX = cropX - 1;
-            int minStartZ = cropZ - (size - 2);
-            int minEndZ = cropZ - 1;
+    public FarmStructure findFarmAt(Block interiorBlock) {
+        return findFarmAt(interiorBlock.getWorld(), interiorBlock.getY(), interiorBlock.getX(), interiorBlock.getZ());
+    }
+
+    private FarmStructure findFarmAt(World world, int surfaceY, int interiorX, int interiorZ) {
+        for (int size = minSize; size <= maxSize; size++) {
+            int minStartX = interiorX - (size - 2);
+            int minEndX = interiorX - 1;
+            int minStartZ = interiorZ - (size - 2);
+            int minEndZ = interiorZ - 1;
 
             for (int minX = minStartX; minX <= minEndX; minX++) {
                 int maxX = minX + size - 1;
                 for (int minZ = minStartZ; minZ <= minEndZ; minZ++) {
                     int maxZ = minZ + size - 1;
                     FarmStructure farm = inspectSquare(world, surfaceY, minX, maxX, minZ, maxZ);
-                    if (farm != null) {
+                    if (farm != null && farm.contains(interiorX, interiorZ)) {
                         return farm;
                     }
                 }
@@ -38,10 +43,12 @@ public final class FarmValidator {
         return null;
     }
 
+    private Block worldBlock(Block block) {
+        return block.getRelative(BlockFace.DOWN);
+    }
+
     private FarmStructure inspectSquare(World world, int y, int minX, int maxX, int minZ, int maxZ) {
-        if (!isClosedBorder(world, y, minX, maxX, minZ, maxZ)) {
-            return null;
-        }
+        if (!isClosedBorder(world, y, minX, maxX, minZ, maxZ)) return null;
 
         Block cauldron = null;
         Block composter = null;
@@ -51,20 +58,14 @@ public final class FarmValidator {
                 Block block = world.getBlockAt(x, y, z);
                 Material type = block.getType();
 
-                if (type == Material.FARMLAND) {
-                    continue;
-                }
+                if (type == Material.FARMLAND) continue;
                 if (isCauldron(type)) {
-                    if (cauldron != null) {
-                        return null;
-                    }
+                    if (cauldron != null) return null;
                     cauldron = block;
                     continue;
                 }
                 if (type == Material.COMPOSTER) {
-                    if (composter != null) {
-                        return null;
-                    }
+                    if (composter != null) return null;
                     composter = block;
                     continue;
                 }
@@ -72,10 +73,7 @@ public final class FarmValidator {
             }
         }
 
-        if (cauldron != null && composter != null && !isAdjacent(cauldron, composter)) {
-            return null;
-        }
-
+        if (cauldron != null && composter != null && !isAdjacent(cauldron, composter)) return null;
         return new FarmStructure(world, y, minX, maxX, minZ, maxZ, cauldron, composter);
     }
 
@@ -93,7 +91,7 @@ public final class FarmValidator {
 
     private boolean isBorderBlock(Block block) {
         Material type = block.getType();
-        return !type.isAir() && type != Material.FARMLAND;
+        return !type.isAir() && type != Material.FARMLAND && type != Material.WATER && type != Material.LAVA;
     }
 
     private boolean isCauldron(Material type) {
@@ -102,9 +100,7 @@ public final class FarmValidator {
 
     private boolean isAdjacent(Block first, Block second) {
         for (BlockFace face : new BlockFace[]{BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST}) {
-            if (first.getRelative(face).equals(second)) {
-                return true;
-            }
+            if (first.getRelative(face).equals(second)) return true;
         }
         return false;
     }

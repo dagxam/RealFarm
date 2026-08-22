@@ -1,5 +1,6 @@
 package me.dagxam.realfarm;
 
+import me.dagxam.realfarm.crop.CropRegistry;
 import me.dagxam.realfarm.farm.CropGrowthManager;
 import me.dagxam.realfarm.farm.FarmStateManager;
 import me.dagxam.realfarm.farm.FarmStructure;
@@ -15,6 +16,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class RealFarmPlugin extends JavaPlugin {
     private FarmValidator validator;
     private FarmStateManager farmStateManager;
+    private CropRegistry cropRegistry;
     private CropGrowthManager cropGrowthManager;
 
     @Override
@@ -31,6 +33,7 @@ public final class RealFarmPlugin extends JavaPlugin {
 
         getLogger().info("RealFarm включён.");
         getLogger().info("Система замкнутых пашен, котлов, воды и компостеров активна.");
+        getLogger().info("Зарегистрировано культур: " + cropRegistry.enabled().size());
     }
 
     private void createManagers() {
@@ -38,7 +41,8 @@ public final class RealFarmPlugin extends JavaPlugin {
         int maxFarmSize = getConfig().getInt("farm.max-size", 15);
         validator = new FarmValidator(minFarmSize, maxFarmSize);
         farmStateManager = new FarmStateManager(this);
-        cropGrowthManager = new CropGrowthManager(this, validator, farmStateManager);
+        cropRegistry = new CropRegistry(getConfig());
+        cropGrowthManager = new CropGrowthManager(this, validator, farmStateManager, cropRegistry);
     }
 
     @Override
@@ -60,6 +64,7 @@ public final class RealFarmPlugin extends JavaPlugin {
         if (args.length == 0 || args[0].equalsIgnoreCase("info")) {
             sender.sendMessage("§aRealFarm §7v" + getPluginMeta().getVersion());
             sender.sendMessage("§7Активно: §fзамкнутые пашни, вода, компостер и контролируемый рост.");
+            sender.sendMessage("§7Зарегистрировано культур: §f" + cropRegistry.enabled().size());
             sender.sendMessage("§7Рост культур: §f2–5 игровых дней.");
             sender.sendMessage("§7Проверка пашни: §f/realfarm status");
             return true;
@@ -92,13 +97,20 @@ public final class RealFarmPlugin extends JavaPlugin {
             return true;
         }
 
-        if (args[0].equalsIgnoreCase("reload")) {
-            reloadConfig();
-            sender.sendMessage("§aRealFarm: конфигурация перезагружена. Размер новой пашни применяется после перезапуска.");
+        if (args[0].equalsIgnoreCase("crops")) {
+            sender.sendMessage("§aКультуры RealFarm:");
+            cropRegistry.enabled().forEach(crop -> sender.sendMessage("§7- §f" + crop.displayName() + " §8(" + crop.id() + ")"));
             return true;
         }
 
-        sender.sendMessage("§eИспользование: /realfarm <info|status|reload>");
+        if (args[0].equalsIgnoreCase("reload")) {
+            reloadConfig();
+            createManagers();
+            sender.sendMessage("§aRealFarm: конфигурация и реестр культур перезагружены.");
+            return true;
+        }
+
+        sender.sendMessage("§eИспользование: /realfarm <info|status|crops|reload>");
         return true;
     }
 }

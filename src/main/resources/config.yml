@@ -1,0 +1,38 @@
+# RealFarm — основной конфиг
+# Этап 1 использует только стандартные предметы и блоки Minecraft.
+
+farm:
+  enabled: true
+
+crops:
+  wheat:
+    enabled: true
+  carrot:
+    enabled: true
+  potato:
+    enabled: true
+  beetroot:
+    enabled: true
+  pumpkin:
+    enabled: true
+  melon:
+    enabled: true
+  corn:
+    enabled: true
+  tomato:
+    enabled: true
+  cucumber:
+    enabled: true
+  cabbage:
+    enabled: true
+
+# Будет использоваться на следующих этапах.
+growth:
+  default-time-seconds: 300
+  random-tick: true
+  water-required: false
+  fertility-enabled: false
+  fertilizer-enabled: false
+
+seasons:
+  integration-enabled: false

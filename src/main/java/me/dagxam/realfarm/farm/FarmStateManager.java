@@ -36,6 +36,15 @@ public final class FarmStateManager {
         return ends != null && ends > farm.world().getFullTime();
     }
 
+    public long getWaterRemaining(FarmStructure farm) {
+        if (!farm.isWatered()) return 0L;
+        return Math.max(0L, nextWaterUse.getOrDefault(farm.id(), farm.world().getFullTime()) - farm.world().getFullTime());
+    }
+
+    public long getFertilizerRemaining(FarmStructure farm) {
+        return Math.max(0L, fertilizerEnds.getOrDefault(farm.id(), 0L) - farm.world().getFullTime());
+    }
+
     public void refresh(FarmStructure farm) {
         refreshWater(farm);
         refreshComposter(farm);
@@ -50,9 +59,7 @@ public final class FarmStateManager {
                 long due = nextWaterUse.get(key);
                 if (due <= now) {
                     Block cauldron = findBlock(world, key);
-                    if (cauldron != null && cauldron.getType() == Material.WATER_CAULDRON) {
-                        cauldron.setType(Material.CAULDRON);
-                    }
+                    if (cauldron != null && cauldron.getType() == Material.WATER_CAULDRON) cauldron.setType(Material.CAULDRON);
                     nextWaterUse.remove(key);
                 }
             }
@@ -82,30 +89,37 @@ public final class FarmStateManager {
             nextWaterUse.remove(id);
             return;
         }
-        nextWaterUse.computeIfAbsent(id, ignored -> farm.world().getFullTime() + randomDays(2, 3));
+        nextWaterUse.computeIfAbsent(id, ignored -> farm.world().getFullTime() + randomDays(
+                "water.consume-after-days-min", 2,
+                "water.consume-after-days-max", 3
+        ));
     }
 
     private void refreshComposter(FarmStructure farm) {
         if (!farm.hasComposter()) return;
         String id = farm.id();
-        if (farm.composter().getBlockData() instanceof Levelled levelled
-                && levelled.getLevel() >= levelled.getMaximumLevel()) {
-            fertilizerEnds.computeIfAbsent(id, ignored -> farm.world().getFullTime() + randomDays(3, 5));
+        if (farm.isComposterFull()) {
+            fertilizerEnds.computeIfAbsent(id, ignored -> farm.world().getFullTime() + randomDays(
+                    "fertilizer.duration-days-min", 3,
+                    "fertilizer.duration-days-max", 5
+            ));
         } else {
             fertilizerEnds.remove(id);
         }
     }
 
     public void activateComposter(FarmStructure farm) {
-        if (!farm.hasComposter()) return;
-        if (farm.composter().getBlockData() instanceof Levelled levelled
-                && levelled.getLevel() >= levelled.getMaximumLevel()) {
-            fertilizerEnds.put(farm.id(), farm.world().getFullTime() + randomDays(3, 5));
-            save();
-        }
+        if (!farm.hasComposter() || !farm.isComposterFull()) return;
+        fertilizerEnds.put(farm.id(), farm.world().getFullTime() + randomDays(
+                "fertilizer.duration-days-min", 3,
+                "fertilizer.duration-days-max", 5
+        ));
+        save();
     }
 
-    private long randomDays(int min, int max) {
+    private long randomDays(String minPath, int minDefault, String maxPath, int maxDefault) {
+        int min = Math.max(1, plugin.getConfig().getInt(minPath, minDefault));
+        int max = Math.max(min, plugin.getConfig().getInt(maxPath, maxDefault));
         return ThreadLocalRandom.current().nextLong(min, max + 1L) * DAY_TICKS;
     }
 
@@ -115,10 +129,7 @@ public final class FarmStateManager {
         try {
             UUID worldId = UUID.fromString(parts[0]);
             if (!world.getUID().equals(worldId)) return null;
-            int x = Integer.parseInt(parts[1]);
-            int y = Integer.parseInt(parts[2]);
-            int z = Integer.parseInt(parts[3]);
-            return world.getBlockAt(x, y, z);
+            return world.getBlockAt(Integer.parseInt(parts[1]), Integer.parseInt(parts[2]), Integer.parseInt(parts[3]));
         } catch (IllegalArgumentException ignored) {
             return null;
         }
@@ -137,11 +148,11 @@ public final class FarmStateManager {
     }
 
     private void load() {
-        for (String key : data.getConfigurationSection("water") == null ? java.util.Set.<String>of() : data.getConfigurationSection("water").getKeys(false)) {
-            nextWaterUse.put(key, data.getLong("water." + key));
+        if (data.getConfigurationSection("water") != null) {
+            for (String key : data.getConfigurationSection("water").getKeys(false)) nextWaterUse.put(key, data.getLong("water." + key));
         }
-        for (String key : data.getConfigurationSection("fertilizer") == null ? java.util.Set.<String>of() : data.getConfigurationSection("fertilizer").getKeys(false)) {
-            fertilizerEnds.put(key, data.getLong("fertilizer." + key));
+        if (data.getConfigurationSection("fertilizer") != null) {
+            for (String key : data.getConfigurationSection("fertilizer").getKeys(false)) fertilizerEnds.put(key, data.getLong("fertilizer." + key));
         }
     }
 

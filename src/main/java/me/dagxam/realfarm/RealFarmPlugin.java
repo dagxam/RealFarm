@@ -6,6 +6,7 @@ import me.dagxam.realfarm.farm.FarmStructure;
 import me.dagxam.realfarm.farm.FarmValidator;
 import me.dagxam.realfarm.listener.FarmListener;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.Ageable;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -19,12 +20,7 @@ public final class RealFarmPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         saveDefaultConfig();
-
-        int minFarmSize = getConfig().getInt("farm.min-size", 3);
-        int maxFarmSize = getConfig().getInt("farm.max-size", 15);
-        validator = new FarmValidator(minFarmSize, maxFarmSize);
-        farmStateManager = new FarmStateManager(this);
-        cropGrowthManager = new CropGrowthManager(this, validator, farmStateManager);
+        createManagers();
 
         getServer().getPluginManager().registerEvents(
                 new FarmListener(validator, farmStateManager, cropGrowthManager), this
@@ -35,6 +31,14 @@ public final class RealFarmPlugin extends JavaPlugin {
 
         getLogger().info("RealFarm включён.");
         getLogger().info("Система замкнутых пашен, котлов, воды и компостеров активна.");
+    }
+
+    private void createManagers() {
+        int minFarmSize = getConfig().getInt("farm.min-size", 3);
+        int maxFarmSize = getConfig().getInt("farm.max-size", 15);
+        validator = new FarmValidator(minFarmSize, maxFarmSize);
+        farmStateManager = new FarmStateManager(this);
+        cropGrowthManager = new CropGrowthManager(this, validator, farmStateManager);
     }
 
     @Override
@@ -71,7 +75,10 @@ public final class RealFarmPlugin extends JavaPlugin {
                 sender.sendMessage("§eПосмотрите на блок внутри пашни и повторите команду.");
                 return true;
             }
-            FarmStructure farm = validator.findFarmAt(target.getType().isAir() ? target.getRelative(org.bukkit.block.BlockFace.DOWN) : target);
+            Block interior = target.getBlockData() instanceof Ageable
+                    ? target.getRelative(org.bukkit.block.BlockFace.DOWN)
+                    : target;
+            FarmStructure farm = validator.findFarmAt(interior);
             if (farm == null) {
                 sender.sendMessage("§cЗамкнутая пашня не найдена.");
                 return true;
@@ -87,7 +94,7 @@ public final class RealFarmPlugin extends JavaPlugin {
 
         if (args[0].equalsIgnoreCase("reload")) {
             reloadConfig();
-            sender.sendMessage("§aRealFarm: конфигурация перезагружена.");
+            sender.sendMessage("§aRealFarm: конфигурация перезагружена. Размер новой пашни применяется после перезапуска.");
             return true;
         }
 

@@ -14,6 +14,7 @@ import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockFertilizeEvent;
 import org.bukkit.event.block.BlockGrowEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.Action;
@@ -75,6 +76,19 @@ public final class FarmListener implements Listener {
 
         farmStateManager.refresh(farm);
         cropGrowthManager.register(block);
+    }
+
+    /**
+     * На ферме костная мука должна использоваться через компостер,
+     * поэтому прямое мгновенное удобрение культуры отключается.
+     */
+    @EventHandler(ignoreCancelled = true)
+    public void onCropFertilize(BlockFertilizeEvent event) {
+        Block block = event.getBlock();
+        if (!(block.getBlockData() instanceof Ageable)) return;
+        if (!cropGrowthManager.isManaged(block)) return;
+        if (validator.findFarm(block) == null) return;
+        event.setCancelled(true);
     }
 
     @EventHandler(ignoreCancelled = true)

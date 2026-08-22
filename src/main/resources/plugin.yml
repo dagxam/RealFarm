@@ -1,0 +1,16 @@
+name: RealFarm
+version: 1.0.0-SNAPSHOT
+main: me.dagxam.realfarm.RealFarmPlugin
+description: Сельскохозяйственный плагин RealFarm для Paper.
+author: dagxam
+website: https://github.com/dagxam/RealFarm
+api-version: '26.2'
+commands:
+  realfarm:
+    description: Управление RealFarm
+    usage: /realfarm <reload|info>
+    permission: realfarm.admin
+permissions:
+  realfarm.admin:
+    description: Администрирование RealFarm
+    default: op

@@ -18,18 +18,19 @@ public final class RealFarmPlugin extends JavaPlugin {
     private FarmStateManager farmStateManager;
     private CropRegistry cropRegistry;
     private CropGrowthManager cropGrowthManager;
+    private FarmListener farmListener;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
         createManagers();
 
-        getServer().getPluginManager().registerEvents(
-                new FarmListener(validator, farmStateManager, cropGrowthManager), this
-        );
+        farmListener = new FarmListener(validator, farmStateManager, cropGrowthManager);
+        getServer().getPluginManager().registerEvents(farmListener, this);
 
         getServer().getScheduler().runTaskTimer(this, farmStateManager::tick, 200L, 200L);
         getServer().getScheduler().runTaskTimer(this, cropGrowthManager::tick, 100L, 100L);
+        getServer().getScheduler().runTaskTimer(this, farmListener::tick, 20L, 10L);
 
         getLogger().info("RealFarm включён.");
         getLogger().info("Система замкнутых пашен, котлов, воды и компостеров активна.");
@@ -63,9 +64,9 @@ public final class RealFarmPlugin extends JavaPlugin {
 
         if (args.length == 0 || args[0].equalsIgnoreCase("info")) {
             sender.sendMessage("§aRealFarm §7v" + getPluginMeta().getVersion());
-            sender.sendMessage("§7Активно: §fзамкнутые пашни, вода, компостер и контролируемый рост.");
+            sender.sendMessage("§7Активное поле требует: §fкотёл с полной водой + полный компостер с костной мукой.");
+            sender.sendMessage("§7Без одного из двух ресурсов поле не активно и пашня высыхает.");
             sender.sendMessage("§7Зарегистрировано культур: §f" + cropRegistry.enabled().size());
-            sender.sendMessage("§7Рост культур: §f2–5 игровых дней.");
             sender.sendMessage("§7Проверка пашни: §f/realfarm status");
             return true;
         }
@@ -89,11 +90,12 @@ public final class RealFarmPlugin extends JavaPlugin {
                 return true;
             }
 
+            farmStateManager.refresh(farm);
             sender.sendMessage("§aПашня найдена: §f" + (farm.maxX() - farm.minX() + 1) + "×" + (farm.maxZ() - farm.minZ() + 1));
             sender.sendMessage("§7Котёл: " + (farm.hasCauldron() ? "§aесть" : "§cнет"));
-            sender.sendMessage("§7Вода: " + (farm.isWatered() ? "§aесть" : "§cнет"));
-            sender.sendMessage("§7Компостер: " + (farm.hasComposter() ? (farm.isComposterFull() ? "§aполный" : "§eесть, но не полный") : "§7не установлен"));
-            sender.sendMessage("§7Ускорение роста: " + (farmStateManager.isFertilizerActive(farm) ? "§aактивно" : "§7не активно"));
+            sender.sendMessage("§7Вода: " + (farm.isWatered() ? "§aполная" : "§cнет"));
+            sender.sendMessage("§7Компостер: " + (farm.hasComposter() ? (farm.isComposterFull() ? "§aполный" : "§cне заполнен") : "§cне установлен"));
+            sender.sendMessage("§7Состояние поля: " + (farm.isActive() ? "§aАКТИВНО" : "§cНЕ АКТИВНО"));
             return true;
         }
 

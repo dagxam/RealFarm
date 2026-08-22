@@ -47,11 +47,9 @@ public final class FarmStructure {
         return x > minX && x < maxX && z > minZ && z < maxZ;
     }
 
-    /** Достаточно любого уровня воды в котле, не требуется полное заполнение. */
+    /** Достаточно любого количества воды: сам тип WATER_CAULDRON уже означает непустой котёл. */
     public boolean isWatered() {
-        if (cauldron == null || cauldron.getType() != Material.WATER_CAULDRON) return false;
-        if (!(cauldron.getBlockData() instanceof Levelled levelled)) return false;
-        return levelled.getLevel() > levelled.getMinimumLevel();
+        return cauldron != null && cauldron.getType() == Material.WATER_CAULDRON;
     }
 
     /** Достаточно любого количества костной муки в компостере. */

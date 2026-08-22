@@ -105,8 +105,7 @@ public final class RealFarmPlugin extends JavaPlugin {
 
         if (args[0].equalsIgnoreCase("reload")) {
             reloadConfig();
-            createManagers();
-            sender.sendMessage("§aRealFarm: конфигурация и реестр культур перезагружены.");
+            sender.sendMessage("§aКонфигурация перечитана. §eДля применения размеров пашни и списка культур перезапустите плагин/сервер.");
             return true;
         }
 

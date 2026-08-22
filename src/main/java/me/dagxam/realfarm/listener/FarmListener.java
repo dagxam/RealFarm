@@ -4,7 +4,7 @@ import me.dagxam.realfarm.farm.CropGrowthManager;
 import me.dagxam.realfarm.farm.FarmStateManager;
 import me.dagxam.realfarm.farm.FarmStructure;
 import me.dagxam.realfarm.farm.FarmValidator;
-import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.GameMode;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
@@ -179,8 +179,9 @@ public final class FarmListener implements Listener {
                 ? (farm.isComposterFull() ? "§aКомпостер: полный" : "§cКомпостер: нет костной муки")
                 : (farm.isWatered() ? "§aКотёл: вода есть" : "§cКотёл: нет воды");
         String status = farm.isActive() ? "§aАКТИВНО" : "§cНЕ АКТИВНО";
+        String text = "§6RealFarm §7| §fПосажено: §e" + planted + " §7| " + resourceInfo + " §7| Поле: " + status;
 
-        player.sendActionBar(Component.text("§6RealFarm §7| §fПосажено: §e" + planted + " §7| " + resourceInfo + " §7| Поле: " + status));
+        player.sendActionBar(LegacyComponentSerializer.legacySection().deserialize(text));
     }
 
     private void refreshNearbyFarmSoil(Player player) {

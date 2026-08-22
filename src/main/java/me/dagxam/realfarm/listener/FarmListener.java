@@ -38,9 +38,12 @@ public final class FarmListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onCropPlace(BlockPlaceEvent event) {
-        if (event.getBlockPlaced().getBlockData() instanceof Ageable) {
-            cropGrowthManager.register(event.getBlockPlaced());
-        }
+        if (!(event.getBlockPlaced().getBlockData() instanceof Ageable)) return;
+        if (event.getBlockPlaced().getRelative(org.bukkit.block.BlockFace.DOWN).getType() != Material.FARMLAND) return;
+
+        FarmStructure farm = validator.findFarm(event.getBlockPlaced());
+        if (farm == null) return;
+        cropGrowthManager.register(event.getBlockPlaced());
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -63,7 +66,7 @@ public final class FarmListener implements Listener {
             return;
         }
         if (!farm.isWatered()) {
-            notifyNearby(farm, "§cНет воды: §7заполните котёл водой.");
+            notifyNearby(farm, "§cНет воды: §7полностью заполните котёл водой.");
             return;
         }
 
@@ -78,7 +81,7 @@ public final class FarmListener implements Listener {
         Block block = event.getClickedBlock();
         if (block == null || block.getType() != Material.COMPOSTER) return;
 
-        FarmStructure farm = validator.findFarm(block.getRelative(org.bukkit.block.BlockFace.UP));
+        FarmStructure farm = validator.findFarmAt(block);
         if (farm == null || farm.composter() == null || !farm.composter().equals(block) || !farm.hasCauldron()) return;
 
         ItemStack item = event.getItem();
@@ -97,7 +100,7 @@ public final class FarmListener implements Listener {
 
         if (!(block.getBlockData() instanceof Levelled levelled)) return;
         if (levelled.getLevel() >= levelled.getMaximumLevel()) {
-            event.getPlayer().sendMessage("§aКомпостер уже полностью заполнен.");
+            event.getPlayer().sendMessage("§aКомпостер уже полностью заполнен и ускоряет рост.");
             farmStateManager.activateComposter(farm);
             return;
         }
@@ -110,7 +113,7 @@ public final class FarmListener implements Listener {
             farmStateManager.activateComposter(farm);
             event.getPlayer().sendMessage("§aКомпостер полностью заполнен. Рост растений ускорен.");
         } else {
-            event.getPlayer().sendMessage("§aКостная мука добавлена в компостер.");
+            event.getPlayer().sendMessage("§aКостная мука добавлена: §f" + levelled.getLevel() + "/" + levelled.getMaximumLevel());
         }
     }
 

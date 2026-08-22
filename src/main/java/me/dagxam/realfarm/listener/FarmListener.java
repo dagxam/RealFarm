@@ -49,7 +49,6 @@ public final class FarmListener implements Listener {
         if (!(block.getBlockData() instanceof Ageable)) return;
         if (block.getRelative(org.bukkit.block.BlockFace.DOWN).getType() != Material.FARMLAND) return;
         if (!cropGrowthManager.isManaged(block)) return;
-
         FarmStructure farm = validator.findFarm(block);
         if (farm == null) return;
         cropGrowthManager.register(block);
@@ -77,18 +76,16 @@ public final class FarmListener implements Listener {
             return;
         }
         if (!farm.isWatered()) {
-            notifyNearby(farm, "§cНет воды: §7полностью заполните котёл водой.");
+            notifyNearby(farm, "§cНет воды: §7налейте воду в котёл.");
             return;
         }
-        if (!farm.isComposterFull()) {
-            notifyNearby(farm, "§cНет удобрения: §7полностью заполните компостер костной мукой.");
+        if (!farm.hasFertilizer()) {
+            notifyNearby(farm, "§cНет удобрения: §7добавьте костную муку в компостер.");
             return;
         }
-
         cropGrowthManager.register(block);
     }
 
-    /** На ферме костная мука должна использоваться через компостер. */
     @EventHandler(ignoreCancelled = true)
     public void onCropFertilize(BlockFertilizeEvent event) {
         Block block = event.getBlock();
@@ -102,10 +99,8 @@ public final class FarmListener implements Listener {
     public void onMoistureChange(MoistureChangeEvent event) {
         Block block = event.getBlock();
         if (block.getType() != Material.FARMLAND) return;
-
         FarmStructure farm = validator.findFarmAt(block);
         if (farm == null) return;
-
         farmStateManager.refresh(farm);
         if (farm.isActive()) {
             event.setCancelled(true);
@@ -150,17 +145,13 @@ public final class FarmListener implements Listener {
         levelled.setLevel(levelled.getLevel() + 1);
         block.setBlockData(levelled);
         consumeOne(event.getPlayer(), item);
+        farmStateManager.activateComposter(farm);
 
-        if (levelled.getLevel() >= levelled.getMaximumLevel()) {
-            farmStateManager.activateComposter(farm);
-            event.getPlayer().sendMessage("§aКомпостер полностью заполнен. Поле активно при наличии полной воды.");
-        } else {
-            event.getPlayer().sendMessage("§aКостная мука добавлена: §f" + levelled.getLevel() + "/" + levelled.getMaximumLevel());
-        }
+        event.getPlayer().sendMessage("§aКостная мука добавлена: §f" + levelled.getLevel() + "/" + levelled.getMaximumLevel()
+                + " §7— полного заполнения не требуется.");
         updateFarmSoil(farm);
     }
 
-    /** Вызывается раз в секунду: информация при наведении и контроль влажности. */
     public void tick() {
         for (Player player : org.bukkit.Bukkit.getOnlinePlayers()) {
             showTargetInfo(player);
@@ -178,12 +169,18 @@ public final class FarmListener implements Listener {
 
         farmStateManager.refresh(farm);
         String planted = cropSummary(farm);
-        String resourceInfo = target.getType() == Material.COMPOSTER
-                ? (farm.isComposterFull() ? "§aКомпостер: полный" : "§cКомпостер: нет костной муки")
-                : (farm.isWatered() ? "§aКотёл: вода есть" : "§cКотёл: нет воды");
+        String resourceInfo;
+        if (target.getType() == Material.COMPOSTER) {
+            resourceInfo = farm.hasFertilizer()
+                    ? "§aКомпостер: " + farm.fertilizerLevel() + "/" + farm.fertilizerMaximumLevel()
+                    : "§cКомпостер: пустой";
+        } else {
+            resourceInfo = farm.isWatered()
+                    ? "§aКотёл: вода " + farm.waterLevel() + "/" + farm.waterMaximumLevel()
+                    : "§cКотёл: нет воды";
+        }
         String status = farm.isActive() ? "§aАКТИВНО" : "§cНЕ АКТИВНО";
         String text = "§6RealFarm §7| §fПосажено: §e" + planted + " §7| " + resourceInfo + " §7| Поле: " + status;
-
         player.sendActionBar(LegacyComponentSerializer.legacySection().deserialize(text));
     }
 
@@ -239,7 +236,6 @@ public final class FarmListener implements Listener {
             }
         }
         if (crops.isEmpty()) return "нет";
-
         List<String> parts = new ArrayList<>();
         crops.forEach((material, amount) -> parts.add(cropName(material) + " x" + amount));
         return String.join(", ", parts);
@@ -267,7 +263,6 @@ public final class FarmListener implements Listener {
         long last = messageCooldown.getOrDefault(farm.id(), 0L);
         if (now - last < 5_000L) return;
         messageCooldown.put(farm.id(), now);
-
         double centerX = (farm.minX() + farm.maxX()) / 2.0 + 0.5;
         double centerZ = (farm.minZ() + farm.maxZ()) / 2.0 + 0.5;
         for (Player player : farm.world().getPlayers()) {

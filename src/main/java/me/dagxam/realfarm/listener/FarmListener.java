@@ -38,12 +38,14 @@ public final class FarmListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onCropPlace(BlockPlaceEvent event) {
-        if (!(event.getBlockPlaced().getBlockData() instanceof Ageable)) return;
-        if (event.getBlockPlaced().getRelative(org.bukkit.block.BlockFace.DOWN).getType() != Material.FARMLAND) return;
+        Block block = event.getBlockPlaced();
+        if (!(block.getBlockData() instanceof Ageable)) return;
+        if (block.getRelative(org.bukkit.block.BlockFace.DOWN).getType() != Material.FARMLAND) return;
+        if (!cropGrowthManager.isManaged(block)) return;
 
-        FarmStructure farm = validator.findFarm(event.getBlockPlaced());
+        FarmStructure farm = validator.findFarm(block);
         if (farm == null) return;
-        cropGrowthManager.register(event.getBlockPlaced());
+        cropGrowthManager.register(block);
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -56,6 +58,7 @@ public final class FarmListener implements Listener {
         Block block = event.getBlock();
         if (!(block.getBlockData() instanceof Ageable)) return;
         if (block.getRelative(org.bukkit.block.BlockFace.DOWN).getType() != Material.FARMLAND) return;
+        if (!cropGrowthManager.isManaged(block)) return;
 
         FarmStructure farm = validator.findFarm(block);
         if (farm == null) return;

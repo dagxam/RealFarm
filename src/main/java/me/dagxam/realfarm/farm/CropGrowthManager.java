@@ -13,6 +13,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -38,10 +39,14 @@ public final class CropGrowthManager {
     public void register(Block block) {
         if (!(block.getBlockData() instanceof Ageable ageable)) return;
         if (block.getRelative(org.bukkit.block.BlockFace.DOWN).getType() != Material.FARMLAND) return;
+        if (!isEnabled(block.getType())) return;
         if (validator.findFarm(block) == null) return;
+        if (ageable.getAge() >= ageable.getMaximumAge()) return;
 
         crops.computeIfAbsent(key(block), ignored -> {
-            long totalTicks = ThreadLocalRandom.current().nextLong(2, 6) * DAY_TICKS;
+            int minDays = Math.max(1, plugin.getConfig().getInt("crops.growth-days-min", 2));
+            int maxDays = Math.max(minDays, plugin.getConfig().getInt("crops.growth-days-max", 5));
+            long totalTicks = ThreadLocalRandom.current().nextLong(minDays, maxDays + 1L) * DAY_TICKS;
             long stageTicks = Math.max(200L, totalTicks / Math.max(1, ageable.getMaximumAge()));
             return new CropState(totalTicks, stageTicks, block.getWorld().getFullTime() + stageTicks);
         });
@@ -63,23 +68,22 @@ public final class CropGrowthManager {
             if (world == null) continue;
 
             Block block = world.getBlockAt(location.x(), location.y(), location.z());
-            if (!(block.getBlockData() instanceof Ageable ageable)) {
+            if (!(block.getBlockData() instanceof Ageable ageable) || !isEnabled(block.getType())) {
                 crops.remove(key);
                 continue;
             }
 
             FarmStructure farm = validator.findFarm(block);
-            if (farm == null || !farm.hasCauldron() || !farm.isWatered()) {
-                continue;
-            }
+            if (farm == null || !farm.hasCauldron() || !farm.isWatered()) continue;
 
             farmStateManager.refresh(farm);
             CropState state = crops.get(key);
+            if (state == null) continue;
             long now = world.getFullTime();
             if (now < state.nextGrowthTick()) continue;
 
             boolean fertilizer = farmStateManager.isFertilizerActive(farm);
-            int growth = fertilizer ? 2 : 1;
+            int growth = fertilizer ? Math.max(1, plugin.getConfig().getInt("fertilizer.growth-multiplier", 2)) : 1;
             int newAge = Math.min(ageable.getMaximumAge(), ageable.getAge() + growth);
             ageable.setAge(newAge);
             block.setBlockData(ageable);
@@ -89,10 +93,23 @@ public final class CropGrowthManager {
                 continue;
             }
 
-            long nextInterval = fertilizer ? Math.max(100L, state.stageTicks() / 2L) : state.stageTicks();
+            long nextInterval = fertilizer ? Math.max(100L, state.stageTicks() / growth) : state.stageTicks();
             crops.put(key, new CropState(state.totalTicks(), state.stageTicks(), now + nextInterval));
         }
         save();
+    }
+
+    private boolean isEnabled(Material material) {
+        String key = switch (material) {
+            case WHEAT -> "wheat";
+            case CARROTS -> "carrot";
+            case POTATOES -> "potato";
+            case BEETROOTS -> "beetroot";
+            case TORCHFLOWER_CROP -> "torchflower";
+            case PITCHER_CROP -> "pitcher";
+            default -> null;
+        };
+        return key != null && plugin.getConfig().getBoolean("crops." + key + ".enabled", true);
     }
 
     private String key(Block block) {

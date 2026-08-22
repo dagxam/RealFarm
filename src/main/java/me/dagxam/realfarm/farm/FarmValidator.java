@@ -14,8 +14,8 @@ public final class FarmValidator {
         this.maxSize = Math.max(this.minSize, maxSize);
     }
 
-    public FarmStructure findFarm(Block block) {
-        return findFarmAt(worldBlock(block), block.getY());
+    public FarmStructure findFarm(Block cropBlock) {
+        return findFarmAt(cropBlock.getWorld(), cropBlock.getY() - 1, cropBlock.getX(), cropBlock.getZ());
     }
 
     public FarmStructure findFarmAt(Block interiorBlock) {
@@ -34,17 +34,11 @@ public final class FarmValidator {
                 for (int minZ = minStartZ; minZ <= minEndZ; minZ++) {
                     int maxZ = minZ + size - 1;
                     FarmStructure farm = inspectSquare(world, surfaceY, minX, maxX, minZ, maxZ);
-                    if (farm != null && farm.contains(interiorX, interiorZ)) {
-                        return farm;
-                    }
+                    if (farm != null && farm.contains(interiorX, interiorZ)) return farm;
                 }
             }
         }
         return null;
-    }
-
-    private Block worldBlock(Block block) {
-        return block.getRelative(BlockFace.DOWN);
     }
 
     private FarmStructure inspectSquare(World world, int y, int minX, int maxX, int minZ, int maxZ) {

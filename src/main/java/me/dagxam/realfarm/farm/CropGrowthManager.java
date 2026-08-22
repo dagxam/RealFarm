@@ -1,5 +1,6 @@
 package me.dagxam.realfarm.farm;
 
+import me.dagxam.realfarm.crop.CropRegistry;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -13,47 +14,58 @@ import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
+/**
+ * Управляет стадиями роста культур, зарегистрированных в CropRegistry.
+ * Обычный случайный рост Minecraft для культур внутри RealFarm отменяется.
+ */
 public final class CropGrowthManager {
     private static final long DAY_TICKS = 24_000L;
 
     private final JavaPlugin plugin;
     private final FarmValidator validator;
     private final FarmStateManager farmStateManager;
+    private final CropRegistry cropRegistry;
     private final File file;
     private final YamlConfiguration data;
     private final Map<String, CropState> crops = new HashMap<>();
 
-    public CropGrowthManager(JavaPlugin plugin, FarmValidator validator, FarmStateManager farmStateManager) {
+    public CropGrowthManager(JavaPlugin plugin, FarmValidator validator, FarmStateManager farmStateManager, CropRegistry cropRegistry) {
         this.plugin = plugin;
         this.validator = validator;
         this.farmStateManager = farmStateManager;
+        this.cropRegistry = cropRegistry;
         this.file = new File(plugin.getDataFolder(), "crop-state.yml");
         this.data = YamlConfiguration.loadConfiguration(file);
         load();
     }
 
+    public boolean isManaged(Block block) {
+        return cropRegistry.isManaged(block.getType());
+    }
+
     public void register(Block block) {
         if (!(block.getBlockData() instanceof Ageable ageable)) return;
         if (block.getRelative(org.bukkit.block.BlockFace.DOWN).getType() != Material.FARMLAND) return;
-        if (!isEnabled(block.getType())) return;
+        if (!cropRegistry.isManaged(block.getType())) return;
         if (validator.findFarm(block) == null) return;
         if (ageable.getAge() >= ageable.getMaximumAge()) return;
 
-        crops.computeIfAbsent(key(block), ignored -> {
-            int minDays = Math.max(1, plugin.getConfig().getInt("crops.growth-days-min", 2));
-            int maxDays = Math.max(minDays, plugin.getConfig().getInt("crops.growth-days-max", 5));
-            long totalTicks = ThreadLocalRandom.current().nextLong(minDays, maxDays + 1L) * DAY_TICKS;
-            long stageTicks = Math.max(200L, totalTicks / Math.max(1, ageable.getMaximumAge()));
-            return new CropState(totalTicks, stageTicks, block.getWorld().getFullTime() + stageTicks);
-        });
+        crops.computeIfAbsent(key(block), ignored -> createState(block, ageable));
     }
 
     public void unregister(Block block) {
         crops.remove(key(block));
+    }
+
+    private CropState createState(Block block, Ageable ageable) {
+        int minDays = Math.max(1, plugin.getConfig().getInt("crops.growth-days-min", 2));
+        int maxDays = Math.max(minDays, plugin.getConfig().getInt("crops.growth-days-max", 5));
+        long totalTicks = ThreadLocalRandom.current().nextLong(minDays, maxDays + 1L) * DAY_TICKS;
+        long stageTicks = Math.max(200L, totalTicks / Math.max(1, ageable.getMaximumAge()));
+        return new CropState(totalTicks, stageTicks, block.getWorld().getFullTime() + stageTicks);
     }
 
     public void tick() {
@@ -68,7 +80,7 @@ public final class CropGrowthManager {
             if (world == null) continue;
 
             Block block = world.getBlockAt(location.x(), location.y(), location.z());
-            if (!(block.getBlockData() instanceof Ageable ageable) || !isEnabled(block.getType())) {
+            if (!(block.getBlockData() instanceof Ageable ageable) || !cropRegistry.isManaged(block.getType())) {
                 crops.remove(key);
                 continue;
             }
@@ -97,19 +109,6 @@ public final class CropGrowthManager {
             crops.put(key, new CropState(state.totalTicks(), state.stageTicks(), now + nextInterval));
         }
         save();
-    }
-
-    private boolean isEnabled(Material material) {
-        String key = switch (material) {
-            case WHEAT -> "wheat";
-            case CARROTS -> "carrot";
-            case POTATOES -> "potato";
-            case BEETROOTS -> "beetroot";
-            case TORCHFLOWER_CROP -> "torchflower";
-            case PITCHER_CROP -> "pitcher";
-            default -> null;
-        };
-        return key != null && plugin.getConfig().getBoolean("crops." + key + ".enabled", true);
     }
 
     private String key(Block block) {

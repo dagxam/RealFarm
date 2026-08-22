@@ -157,7 +157,7 @@ public final class FarmListener implements Listener {
         updateFarmSoil(farm);
     }
 
-    /** Вызывается планировщиком: информация при наведении и контроль влажности. */
+    /** Вызывается раз в секунду: информация при наведении и контроль влажности. */
     public void tick() {
         for (Player player : org.bukkit.Bukkit.getOnlinePlayers()) {
             showTargetInfo(player);
@@ -184,7 +184,7 @@ public final class FarmListener implements Listener {
     }
 
     private void refreshNearbyFarmSoil(Player player) {
-        int radius = 16;
+        int radius = 8;
         Map<String, FarmStructure> farms = new HashMap<>();
         int centerX = player.getLocation().getBlockX();
         int centerY = player.getLocation().getBlockY();
@@ -192,7 +192,7 @@ public final class FarmListener implements Listener {
 
         for (int x = centerX - radius; x <= centerX + radius; x++) {
             for (int z = centerZ - radius; z <= centerZ + radius; z++) {
-                for (int y = Math.max(player.getWorld().getMinHeight(), centerY - 4); y <= Math.min(player.getWorld().getMaxHeight() - 1, centerY + 4); y++) {
+                for (int y = Math.max(player.getWorld().getMinHeight(), centerY - 2); y <= Math.min(player.getWorld().getMaxHeight() - 1, centerY + 2); y++) {
                     Block block = player.getWorld().getBlockAt(x, y, z);
                     if (block.getType() != Material.FARMLAND) continue;
                     FarmStructure farm = validator.findFarmAt(block);

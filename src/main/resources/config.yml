@@ -1,10 +1,28 @@
 # RealFarm — основной конфиг
-# Этап 1 использует только стандартные предметы и блоки Minecraft.
+# Пока используются только стандартные блоки и предметы Minecraft.
 
 farm:
   enabled: true
+  # Минимальный размер квадрата — 3x3.
+  # Внутри: пашня, один котёл и рядом с ним один компостер.
+  max-size: 15
+
+water:
+  # Полностью заполненный водой котёл работает случайно 2–3 игровых дня,
+  # затем вода расходуется полностью.
+  consume-after-days-min: 2
+  consume-after-days-max: 3
+
+fertilizer:
+  # Компостер заполняется только костной мукой.
+  # Полный компостер ускоряет рост 3–5 игровых дней.
+  duration-days-min: 3
+  duration-days-max: 5
+  growth-multiplier: 2
 
 crops:
+  growth-days-min: 2
+  growth-days-max: 5
   wheat:
     enabled: true
   carrot:
@@ -13,26 +31,17 @@ crops:
     enabled: true
   beetroot:
     enabled: true
-  pumpkin:
+  torchflower:
     enabled: true
-  melon:
-    enabled: true
-  corn:
-    enabled: true
-  tomato:
-    enabled: true
-  cucumber:
-    enabled: true
-  cabbage:
+  pitcher:
     enabled: true
 
-# Будет использоваться на следующих этапах.
-growth:
-  default-time-seconds: 300
-  random-tick: true
-  water-required: false
-  fertility-enabled: false
-  fertilizer-enabled: false
+# Будущие культуры RealFarm будут добавлены поверх этой системы.
+future-crops:
+  corn: true
+  tomato: true
+  cucumber: true
+  cabbage: true
 
 seasons:
   integration-enabled: false

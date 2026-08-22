@@ -25,7 +25,10 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class FarmListener implements Listener {
@@ -174,7 +177,7 @@ public final class FarmListener implements Listener {
         if (farm == null) return;
 
         farmStateManager.refresh(farm);
-        int planted = countCrops(farm);
+        String planted = cropSummary(farm);
         String resourceInfo = target.getType() == Material.COMPOSTER
                 ? (farm.isComposterFull() ? "§aКомпостер: полный" : "§cКомпостер: нет костной муки")
                 : (farm.isWatered() ? "§aКотёл: вода есть" : "§cКотёл: нет воды");
@@ -224,16 +227,34 @@ public final class FarmListener implements Listener {
         block.setBlockData(farmland, false);
     }
 
-    private int countCrops(FarmStructure farm) {
-        int total = 0;
+    private String cropSummary(FarmStructure farm) {
+        Map<Material, Integer> crops = new EnumMap<>(Material.class);
         for (int x = farm.minX() + 1; x < farm.maxX(); x++) {
             for (int z = farm.minZ() + 1; z < farm.maxZ(); z++) {
                 Block soil = farm.world().getBlockAt(x, farm.surfaceY(), z);
                 if (soil.getType() != Material.FARMLAND) continue;
-                if (soil.getRelative(org.bukkit.block.BlockFace.UP).getBlockData() instanceof Ageable) total++;
+                Block crop = soil.getRelative(org.bukkit.block.BlockFace.UP);
+                if (!(crop.getBlockData() instanceof Ageable) || !cropGrowthManager.isManaged(crop)) continue;
+                crops.merge(crop.getType(), 1, Integer::sum);
             }
         }
-        return total;
+        if (crops.isEmpty()) return "нет";
+
+        List<String> parts = new ArrayList<>();
+        crops.forEach((material, amount) -> parts.add(cropName(material) + " x" + amount));
+        return String.join(", ", parts);
+    }
+
+    private String cropName(Material material) {
+        return switch (material) {
+            case WHEAT -> "пшеница";
+            case CARROTS -> "морковь";
+            case POTATOES -> "картофель";
+            case BEETROOTS -> "свёкла";
+            case TORCHFLOWER_CROP -> "торчфлауэр";
+            case PITCHER_CROP -> "кувшиночник";
+            default -> material.name().toLowerCase();
+        };
     }
 
     private void consumeOne(Player player, ItemStack item) {

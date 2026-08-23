@@ -50,14 +50,16 @@ public final class RealFarmPlugin extends JavaPlugin {
         getServer().removeRecipe(cauldronKey);
         getServer().removeRecipe(composterKey);
 
+        // Котёл фермы: железо | костная мука | железо / железо | железо | железо
         ShapedRecipe cauldron = new ShapedRecipe(cauldronKey, farmItems.createCauldron());
-        cauldron.shape("III", "IBI", "III");
+        cauldron.shape("IBI", "III");
         cauldron.setIngredient('I', Material.IRON_INGOT);
         cauldron.setIngredient('B', Material.BONE_MEAL);
         getServer().addRecipe(cauldron);
 
+        // Компостер фермы: доски | костная мука | доски / доски | доски | доски
         ShapedRecipe composter = new ShapedRecipe(composterKey, farmItems.createComposter());
-        composter.shape("PPP", "PBP", "PPP");
+        composter.shape("PBP", "PPP");
         composter.setIngredient('P', Material.OAK_PLANKS);
         composter.setIngredient('B', Material.BONE_MEAL);
         getServer().addRecipe(composter);
@@ -77,8 +79,8 @@ public final class RealFarmPlugin extends JavaPlugin {
             sender.sendMessage("§aRealFarm §7v" + getPluginMeta().getVersion());
             sender.sendMessage("§7Участок может иметь любую форму, главное — связная пашня без разрывов.");
             sender.sendMessage("§7Котёл фермы и компостер фермы должны стоять вплотную к пашне с любой стороны.");
-            sender.sendMessage("§7Крафт котла: 8 железных слитков вокруг костной муки.");
-            sender.sendMessage("§7Крафт компостера: 8 дубовых досок вокруг костной муки.");
+            sender.sendMessage("§7Крафт котла: железо-костная мука-железо / железо-железо-железо.");
+            sender.sendMessage("§7Крафт компостера: доски-костная мука-доски / доски-доски-доски.");
             return true;
         }
         if (args[0].equalsIgnoreCase("status")) {

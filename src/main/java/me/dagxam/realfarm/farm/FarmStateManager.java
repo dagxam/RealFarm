@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
+/** Хранит специальные блоки RealFarm, номера участков и расход ресурсов. */
 public final class FarmStateManager {
     private static final long DAY_TICKS = 24_000L;
 
@@ -23,6 +24,8 @@ public final class FarmStateManager {
     private final YamlConfiguration data;
     private final Map<String, Long> nextWaterUse = new HashMap<>();
     private final Map<String, Long> fertilizerEnds = new HashMap<>();
+    private final Map<String, Integer> plotNumbers = new HashMap<>();
+    private final Map<String, String> serviceBlocks = new HashMap<>();
 
     public FarmStateManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -31,17 +34,28 @@ public final class FarmStateManager {
         load();
     }
 
-    public boolean isFertilizerActive(FarmStructure farm) {
-        return farm.hasFertilizer();
+    public void markFarmCauldron(Block block) { serviceBlocks.put(FarmStructure.locationKey(block), "cauldron"); save(); }
+    public void markFarmComposter(Block block) { serviceBlocks.put(FarmStructure.locationKey(block), "composter"); save(); }
+    public void unmarkService(Block block) {
+        String key = FarmStructure.locationKey(block);
+        serviceBlocks.remove(key);
+        nextWaterUse.remove(key);
+        fertilizerEnds.remove(key);
+        save();
     }
 
-    public long getWaterRemaining(FarmStructure farm) {
-        if (!farm.isWatered()) return 0L;
-        return Math.max(0L, nextWaterUse.getOrDefault(farm.id(), farm.world().getFullTime()) - farm.world().getFullTime());
+    public boolean isFarmCauldron(Block block) {
+        return (block.getType() == Material.CAULDRON || block.getType() == Material.WATER_CAULDRON)
+                && "cauldron".equals(serviceBlocks.get(FarmStructure.locationKey(block)));
     }
 
-    public long getFertilizerRemaining(FarmStructure farm) {
-        return Math.max(0L, fertilizerEnds.getOrDefault(farm.id(), 0L) - farm.world().getFullTime());
+    public boolean isFarmComposter(Block block) {
+        return block.getType() == Material.COMPOSTER
+                && "composter".equals(serviceBlocks.get(FarmStructure.locationKey(block)));
+    }
+
+    public int getPlotNumber(FarmStructure farm) {
+        return plotNumbers.computeIfAbsent(farm.id(), ignored -> plotNumbers.values().stream().mapToInt(Integer::intValue).max().orElse(0) + 1);
     }
 
     public void refresh(FarmStructure farm) {
@@ -52,28 +66,21 @@ public final class FarmStateManager {
     public void tick() {
         for (World world : Bukkit.getWorlds()) {
             long now = world.getFullTime();
-
             for (String key : nextWaterUse.keySet().toArray(String[]::new)) {
                 if (!key.startsWith(world.getUID().toString() + ":")) continue;
-                long due = nextWaterUse.get(key);
-                if (due <= now) {
-                    Block cauldron = findBlock(world, key);
-                    if (cauldron != null && cauldron.getType() == Material.WATER_CAULDRON) cauldron.setType(Material.CAULDRON);
+                if (nextWaterUse.get(key) <= now) {
+                    Block block = findBlock(world, key);
+                    if (block != null && block.getType() == Material.WATER_CAULDRON) block.setType(Material.CAULDRON);
                     nextWaterUse.remove(key);
                 }
             }
-
             for (String key : fertilizerEnds.keySet().toArray(String[]::new)) {
                 if (!key.startsWith(world.getUID().toString() + ":")) continue;
-                long due = fertilizerEnds.get(key);
-                if (due <= now) {
-                    Block cauldron = findBlock(world, key);
-                    if (cauldron != null) {
-                        Block composter = findAdjacentComposter(cauldron);
-                        if (composter != null && composter.getBlockData() instanceof Levelled levelled) {
-                            levelled.setLevel(levelled.getMinimumLevel());
-                            composter.setBlockData(levelled);
-                        }
+                if (fertilizerEnds.get(key) <= now) {
+                    Block block = findBlock(world, key);
+                    if (block != null && isFarmComposter(block) && block.getBlockData() instanceof Levelled levelled) {
+                        levelled.setLevel(levelled.getMinimumLevel());
+                        block.setBlockData(levelled);
                     }
                     fertilizerEnds.remove(key);
                 }
@@ -83,38 +90,20 @@ public final class FarmStateManager {
     }
 
     private void refreshWater(FarmStructure farm) {
-        String id = farm.id();
-        if (!farm.isWatered()) {
-            nextWaterUse.remove(id);
-            return;
-        }
-        nextWaterUse.computeIfAbsent(id, ignored -> farm.world().getFullTime() + randomDays(
-                "water.consume-after-days-min", 2,
-                "water.consume-after-days-max", 3
-        ));
+        if (!farm.hasCauldron()) return;
+        String key = FarmStructure.locationKey(farm.cauldron());
+        if (!farm.isWatered()) { nextWaterUse.remove(key); return; }
+        nextWaterUse.computeIfAbsent(key, ignored -> farm.world().getFullTime() + randomDays("water.consume-after-days-min", 2, "water.consume-after-days-max", 3));
     }
 
     private void refreshComposter(FarmStructure farm) {
         if (!farm.hasComposter()) return;
-        String id = farm.id();
-        if (farm.hasFertilizer()) {
-            fertilizerEnds.computeIfAbsent(id, ignored -> farm.world().getFullTime() + randomDays(
-                    "fertilizer.duration-days-min", 3,
-                    "fertilizer.duration-days-max", 5
-            ));
-        } else {
-            fertilizerEnds.remove(id);
-        }
+        String key = FarmStructure.locationKey(farm.composter());
+        if (farm.hasFertilizer()) fertilizerEnds.computeIfAbsent(key, ignored -> farm.world().getFullTime() + randomDays("fertilizer.duration-days-min", 3, "fertilizer.duration-days-max", 5));
+        else fertilizerEnds.remove(key);
     }
 
-    public void activateComposter(FarmStructure farm) {
-        if (!farm.hasComposter() || !farm.hasFertilizer()) return;
-        fertilizerEnds.computeIfAbsent(farm.id(), ignored -> farm.world().getFullTime() + randomDays(
-                "fertilizer.duration-days-min", 3,
-                "fertilizer.duration-days-max", 5
-        ));
-        save();
-    }
+    public void activateComposter(FarmStructure farm) { refreshComposter(farm); save(); }
 
     private long randomDays(String minPath, int minDefault, String maxPath, int maxDefault) {
         int min = Math.max(1, plugin.getConfig().getInt(minPath, minDefault));
@@ -124,46 +113,26 @@ public final class FarmStateManager {
 
     private Block findBlock(World world, String key) {
         String[] parts = key.split(":");
-        if (parts.length < 4) return null;
+        if (parts.length != 4) return null;
         try {
-            UUID worldId = UUID.fromString(parts[0]);
-            if (!world.getUID().equals(worldId)) return null;
+            if (!world.getUID().equals(UUID.fromString(parts[0]))) return null;
             return world.getBlockAt(Integer.parseInt(parts[1]), Integer.parseInt(parts[2]), Integer.parseInt(parts[3]));
-        } catch (IllegalArgumentException ignored) {
-            return null;
-        }
-    }
-
-    private Block findAdjacentComposter(Block cauldron) {
-        for (org.bukkit.block.BlockFace face : new org.bukkit.block.BlockFace[]{
-                org.bukkit.block.BlockFace.NORTH,
-                org.bukkit.block.BlockFace.SOUTH,
-                org.bukkit.block.BlockFace.EAST,
-                org.bukkit.block.BlockFace.WEST}) {
-            Block block = cauldron.getRelative(face);
-            if (block.getType() == Material.COMPOSTER) return block;
-        }
-        return null;
+        } catch (IllegalArgumentException ignored) { return null; }
     }
 
     private void load() {
-        if (data.getConfigurationSection("water") != null) {
-            for (String key : data.getConfigurationSection("water").getKeys(false)) nextWaterUse.put(key, data.getLong("water." + key));
-        }
-        if (data.getConfigurationSection("fertilizer") != null) {
-            for (String key : data.getConfigurationSection("fertilizer").getKeys(false)) fertilizerEnds.put(key, data.getLong("fertilizer." + key));
-        }
+        if (data.getConfigurationSection("water") != null) for (String key : data.getConfigurationSection("water").getKeys(false)) nextWaterUse.put(key, data.getLong("water." + key));
+        if (data.getConfigurationSection("fertilizer") != null) for (String key : data.getConfigurationSection("fertilizer").getKeys(false)) fertilizerEnds.put(key, data.getLong("fertilizer." + key));
+        if (data.getConfigurationSection("plots") != null) for (String key : data.getConfigurationSection("plots").getKeys(false)) plotNumbers.put(key, data.getInt("plots." + key));
+        if (data.getConfigurationSection("service-blocks") != null) for (String key : data.getConfigurationSection("service-blocks").getKeys(false)) serviceBlocks.put(key, data.getString("service-blocks." + key));
     }
 
     public void save() {
-        data.set("water", null);
-        data.set("fertilizer", null);
+        data.set("water", null); data.set("fertilizer", null); data.set("plots", null); data.set("service-blocks", null);
         nextWaterUse.forEach((key, value) -> data.set("water." + key, value));
         fertilizerEnds.forEach((key, value) -> data.set("fertilizer." + key, value));
-        try {
-            data.save(file);
-        } catch (IOException exception) {
-            plugin.getLogger().warning("Не удалось сохранить farm-state.yml: " + exception.getMessage());
-        }
+        plotNumbers.forEach((key, value) -> data.set("plots." + key, value));
+        serviceBlocks.forEach((key, value) -> data.set("service-blocks." + key, value));
+        try { data.save(file); } catch (IOException exception) { plugin.getLogger().warning("Не удалось сохранить farm-state.yml: " + exception.getMessage()); }
     }
 }

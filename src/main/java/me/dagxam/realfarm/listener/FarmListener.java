@@ -27,10 +27,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 public final class FarmListener implements Listener {
@@ -95,8 +92,15 @@ public final class FarmListener implements Listener {
         FarmStructure farm = validator.findFarmAt(event.getBlock());
         if (farm == null) return;
         stateManager.refresh(farm);
-        if (farm.isActive()) { event.setCancelled(true); setMoisture(event.getBlock(), true); }
-        else setMoisture(event.getBlock(), false);
+
+        // Влажность пашни зависит только от наличия воды в котле фермы.
+        // Компостер влияет на активность и рост, но не должен сушить землю.
+        if (farm.isWatered()) {
+            event.setCancelled(true);
+            setMoisture(event.getBlock(), true);
+        } else {
+            setMoisture(event.getBlock(), false);
+        }
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -182,11 +186,18 @@ public final class FarmListener implements Listener {
                 if (farm != null) farms.putIfAbsent(farm.id(), farm);
             }
         }
-        for (FarmStructure farm : farms.values()) { stateManager.refresh(farm); updateFarmSoil(farm); }
+        for (FarmStructure farm : farms.values()) {
+            stateManager.refresh(farm);
+            updateFarmSoil(farm);
+        }
     }
 
     private void updateFarmSoil(FarmStructure farm) {
-        for (FarmStructure.BlockPosition position : farm.farmland()) setMoisture(farm.world().getBlockAt(position.x(), position.y(), position.z()), farm.isActive());
+        // Пока в котле есть хотя бы один уровень воды, вся пашня участка всегда влажная.
+        boolean watered = farm.isWatered();
+        for (FarmStructure.BlockPosition position : farm.farmland()) {
+            setMoisture(farm.world().getBlockAt(position.x(), position.y(), position.z()), watered);
+        }
     }
 
     private void setMoisture(Block block, boolean wet) {
@@ -195,13 +206,19 @@ public final class FarmListener implements Listener {
         block.setBlockData(farmland, false);
     }
 
-    private void consumeOne(Player player, ItemStack item) { if (player.getGameMode() != GameMode.CREATIVE) item.setAmount(item.getAmount() - 1); }
+    private void consumeOne(Player player, ItemStack item) {
+        if (player.getGameMode() != GameMode.CREATIVE) item.setAmount(item.getAmount() - 1);
+    }
 
     private void notifyInactive(FarmStructure farm) {
         String reason = !farm.hasCauldron() ? "§cНет котла фермы рядом с пашней." : !farm.hasComposter() ? "§cНет компостера фермы рядом с пашней." : !farm.isWatered() ? "§cНет воды в котле фермы." : "§cНет костной муки в компостере фермы.";
         long now = System.currentTimeMillis(), last = messageCooldown.getOrDefault(farm.id(), 0L);
         if (now - last < 5000L) return;
         messageCooldown.put(farm.id(), now);
-        for (Player player : farm.world().getPlayers()) if (player.getLocation().distanceSquared(farm.world().getBlockAt(farm.minX(), farm.farmland().iterator().next().y(), farm.minZ()).getLocation()) < 20 * 20) player.sendMessage(reason);
+        for (Player player : farm.world().getPlayers()) {
+            if (player.getLocation().distanceSquared(farm.world().getBlockAt(farm.minX(), farm.farmland().iterator().next().y(), farm.minZ()).getLocation()) < 20 * 20) {
+                player.sendMessage(reason);
+            }
+        }
     }
 }

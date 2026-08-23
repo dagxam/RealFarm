@@ -5,62 +5,71 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.Levelled;
 
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
+
+/** Описание одного участка RealFarm. Форма участка может быть любой, главное — связная пашня. */
 public final class FarmStructure {
     private final World world;
-    private final int surfaceY;
+    private final Set<BlockPosition> farmland;
+    private final Block cauldron;
+    private final Block composter;
     private final int minX;
     private final int maxX;
     private final int minZ;
     private final int maxZ;
-    private final Block cauldron;
-    private final Block composter;
 
-    public FarmStructure(World world, int surfaceY, int minX, int maxX, int minZ, int maxZ, Block cauldron, Block composter) {
+    public FarmStructure(World world, Set<BlockPosition> farmland, Block cauldron, Block composter) {
         this.world = world;
-        this.surfaceY = surfaceY;
-        this.minX = minX;
-        this.maxX = maxX;
-        this.minZ = minZ;
-        this.maxZ = maxZ;
+        this.farmland = Collections.unmodifiableSet(new HashSet<>(farmland));
         this.cauldron = cauldron;
         this.composter = composter;
+
+        int localMinX = Integer.MAX_VALUE, localMaxX = Integer.MIN_VALUE;
+        int localMinZ = Integer.MAX_VALUE, localMaxZ = Integer.MIN_VALUE;
+        for (BlockPosition position : farmland) {
+            localMinX = Math.min(localMinX, position.x());
+            localMaxX = Math.max(localMaxX, position.x());
+            localMinZ = Math.min(localMinZ, position.z());
+            localMaxZ = Math.max(localMaxZ, position.z());
+        }
+        this.minX = localMinX;
+        this.maxX = localMaxX;
+        this.minZ = localMinZ;
+        this.maxZ = localMaxZ;
     }
 
     public World world() { return world; }
-    public int surfaceY() { return surfaceY; }
+    public Set<BlockPosition> farmland() { return farmland; }
+    public Block cauldron() { return cauldron; }
+    public Block composter() { return composter; }
     public int minX() { return minX; }
     public int maxX() { return maxX; }
     public int minZ() { return minZ; }
     public int maxZ() { return maxZ; }
-    public Block cauldron() { return cauldron; }
-    public Block composter() { return composter; }
 
     public boolean hasCauldron() { return cauldron != null; }
     public boolean hasComposter() { return composter != null; }
+    public int farmlandCount() { return farmland.size(); }
 
-    /** Поле активно, когда есть хотя бы немного воды и хотя бы немного костной муки. */
+    /** Участок работает только при наличии обоих специальных блоков и ресурсов в них. */
     public boolean isActive() {
         return hasCauldron() && hasComposter() && isWatered() && hasFertilizer();
     }
 
-    public boolean contains(int x, int z) {
-        return x > minX && x < maxX && z > minZ && z < maxZ;
+    public boolean contains(Block block) {
+        return block.getWorld().equals(world)
+                && farmland.contains(new BlockPosition(block.getX(), block.getY(), block.getZ()));
     }
 
-    /** Достаточно любого количества воды: сам тип WATER_CAULDRON уже означает непустой котёл. */
     public boolean isWatered() {
         return cauldron != null && cauldron.getType() == Material.WATER_CAULDRON;
     }
 
-    /** Достаточно любого количества костной муки в компостере. */
     public boolean hasFertilizer() {
         if (composter == null || !(composter.getBlockData() instanceof Levelled levelled)) return false;
         return levelled.getLevel() > levelled.getMinimumLevel();
-    }
-
-    public boolean isComposterFull() {
-        if (composter == null || !(composter.getBlockData() instanceof Levelled levelled)) return false;
-        return levelled.getLevel() >= levelled.getMaximumLevel();
     }
 
     public int waterLevel() {
@@ -83,10 +92,16 @@ public final class FarmStructure {
         return levelled.getMaximumLevel();
     }
 
+    /** Стабильный ключ участка: в первую очередь координаты специального котла. */
     public String id() {
-        if (cauldron != null) {
-            return world.getUID() + ":" + cauldron.getX() + ":" + cauldron.getY() + ":" + cauldron.getZ();
-        }
-        return world.getUID() + ":" + minX + ":" + surfaceY + ":" + minZ + ":" + maxX + ":" + maxZ;
+        Block anchor = cauldron != null ? cauldron : composter;
+        if (anchor != null) return locationKey(anchor);
+        return world.getUID() + ":empty:" + minX + ":" + minZ + ":" + farmland.size();
     }
+
+    public static String locationKey(Block block) {
+        return block.getWorld().getUID() + ":" + block.getX() + ":" + block.getY() + ":" + block.getZ();
+    }
+
+    public record BlockPosition(int x, int y, int z) {}
 }

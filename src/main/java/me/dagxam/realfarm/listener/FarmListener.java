@@ -1,6 +1,7 @@
 package me.dagxam.realfarm.listener;
 
 import me.dagxam.realfarm.farm.CropGrowthManager;
+import me.dagxam.realfarm.farm.FarmItems;
 import me.dagxam.realfarm.farm.FarmStateManager;
 import me.dagxam.realfarm.farm.FarmStructure;
 import me.dagxam.realfarm.farm.FarmValidator;
@@ -8,6 +9,7 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.GameMode;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.Ageable;
 import org.bukkit.block.data.Levelled;
 import org.bukkit.block.data.type.Farmland;
@@ -32,123 +34,94 @@ import java.util.List;
 import java.util.Map;
 
 public final class FarmListener implements Listener {
+    private static final BlockFace[] SIDES = {BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST};
     private final FarmValidator validator;
-    private final FarmStateManager farmStateManager;
+    private final FarmStateManager stateManager;
     private final CropGrowthManager cropGrowthManager;
+    private final FarmItems farmItems;
     private final Map<String, Long> messageCooldown = new HashMap<>();
 
-    public FarmListener(FarmValidator validator, FarmStateManager farmStateManager, CropGrowthManager cropGrowthManager) {
+    public FarmListener(FarmValidator validator, FarmStateManager stateManager, CropGrowthManager cropGrowthManager, FarmItems farmItems) {
         this.validator = validator;
-        this.farmStateManager = farmStateManager;
+        this.stateManager = stateManager;
         this.cropGrowthManager = cropGrowthManager;
+        this.farmItems = farmItems;
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onSpecialBlockPlace(BlockPlaceEvent event) {
+        ItemStack item = event.getItemInHand();
+        if (farmItems.isCauldron(item)) stateManager.markFarmCauldron(event.getBlockPlaced());
+        else if (farmItems.isComposter(item)) stateManager.markFarmComposter(event.getBlockPlaced());
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onSpecialBlockBreak(BlockBreakEvent event) {
+        Block block = event.getBlock();
+        if (stateManager.isFarmCauldron(block) || stateManager.isFarmComposter(block)) stateManager.unmarkService(block);
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onCropPlace(BlockPlaceEvent event) {
         Block block = event.getBlockPlaced();
         if (!(block.getBlockData() instanceof Ageable)) return;
-        if (block.getRelative(org.bukkit.block.BlockFace.DOWN).getType() != Material.FARMLAND) return;
         if (!cropGrowthManager.isManaged(block)) return;
-        FarmStructure farm = validator.findFarm(block);
-        if (farm == null) return;
-        cropGrowthManager.register(block);
+        if (validator.findFarm(block) != null) cropGrowthManager.register(block);
     }
 
     @EventHandler(ignoreCancelled = true)
-    public void onCropBreak(BlockBreakEvent event) {
-        cropGrowthManager.unregister(event.getBlock());
-    }
+    public void onCropBreak(BlockBreakEvent event) { cropGrowthManager.unregister(event.getBlock()); }
 
     @EventHandler(ignoreCancelled = true)
     public void onNaturalGrow(BlockGrowEvent event) {
         Block block = event.getBlock();
-        if (!(block.getBlockData() instanceof Ageable)) return;
-        if (block.getRelative(org.bukkit.block.BlockFace.DOWN).getType() != Material.FARMLAND) return;
-        if (!cropGrowthManager.isManaged(block)) return;
-
+        if (!(block.getBlockData() instanceof Ageable) || !cropGrowthManager.isManaged(block)) return;
         FarmStructure farm = validator.findFarm(block);
         if (farm == null) return;
-
         event.setCancelled(true);
-        farmStateManager.refresh(farm);
-        if (!farm.hasCauldron() || !farm.hasComposter()) {
-            notifyNearby(farm, "§cПоле не активно: §7нужны котёл и компостер.");
-            return;
-        }
-        if (!farm.isWatered()) {
-            notifyNearby(farm, "§cНет воды: §7налейте воду в котёл.");
-            return;
-        }
-        if (!farm.hasFertilizer()) {
-            notifyNearby(farm, "§cНет удобрения: §7добавьте костную муку в компостер.");
-            return;
-        }
-        cropGrowthManager.register(block);
+        stateManager.refresh(farm);
+        if (!farm.isActive()) notifyInactive(farm);
+        else cropGrowthManager.register(block);
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onCropFertilize(BlockFertilizeEvent event) {
-        Block block = event.getBlock();
-        if (!(block.getBlockData() instanceof Ageable)) return;
-        if (!cropGrowthManager.isManaged(block)) return;
-        if (validator.findFarm(block) == null) return;
-        event.setCancelled(true);
+        if (event.getBlock().getBlockData() instanceof Ageable && cropGrowthManager.isManaged(event.getBlock()) && validator.findFarm(event.getBlock()) != null) event.setCancelled(true);
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onMoistureChange(MoistureChangeEvent event) {
-        Block block = event.getBlock();
-        if (block.getType() != Material.FARMLAND) return;
-        FarmStructure farm = validator.findFarmAt(block);
+        if (event.getBlock().getType() != Material.FARMLAND) return;
+        FarmStructure farm = validator.findFarmAt(event.getBlock());
         if (farm == null) return;
-        farmStateManager.refresh(farm);
-        if (farm.isActive()) {
-            event.setCancelled(true);
-            setMoisture(block, true);
-        } else {
-            setMoisture(block, false);
-        }
+        stateManager.refresh(farm);
+        if (farm.isActive()) { event.setCancelled(true); setMoisture(event.getBlock(), true); }
+        else setMoisture(event.getBlock(), false);
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onComposterUse(PlayerInteractEvent event) {
-        if (event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
-        if (event.getHand() != EquipmentSlot.HAND) return;
+        if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getHand() != EquipmentSlot.HAND) return;
         Block block = event.getClickedBlock();
-        if (block == null || block.getType() != Material.COMPOSTER) return;
-
-        FarmStructure farm = validator.findFarmAt(block);
-        if (farm == null || farm.composter() == null || !farm.composter().equals(block) || !farm.hasCauldron()) return;
+        if (block == null || !stateManager.isFarmComposter(block)) return;
+        FarmStructure farm = findFarmForService(block);
+        if (farm == null) return;
 
         ItemStack item = event.getItem();
-        if (item == null || item.getType() == Material.AIR) {
-            event.setUseInteractedBlock(Event.Result.DENY);
-            return;
-        }
-
         event.setUseInteractedBlock(Event.Result.DENY);
+        if (item == null || item.getType() == Material.AIR) return;
         event.setUseItemInHand(Event.Result.DENY);
-
         if (item.getType() != Material.BONE_MEAL) {
-            event.getPlayer().sendMessage("§eКомпостер этой пашни заполняется только костной мукой.");
+            event.getPlayer().sendMessage("§eКомпостер фермы заполняется только костной мукой.");
             return;
         }
-
         if (!(block.getBlockData() instanceof Levelled levelled)) return;
-        if (levelled.getLevel() >= levelled.getMaximumLevel()) {
-            event.getPlayer().sendMessage("§aКомпостер уже полностью заполнен.");
-            farmStateManager.activateComposter(farm);
-            updateFarmSoil(farm);
-            return;
+        if (levelled.getLevel() < levelled.getMaximumLevel()) {
+            levelled.setLevel(levelled.getLevel() + 1);
+            block.setBlockData(levelled);
+            consumeOne(event.getPlayer(), item);
         }
-
-        levelled.setLevel(levelled.getLevel() + 1);
-        block.setBlockData(levelled);
-        consumeOne(event.getPlayer(), item);
-        farmStateManager.activateComposter(farm);
-
-        event.getPlayer().sendMessage("§aКостная мука добавлена: §f" + levelled.getLevel() + "/" + levelled.getMaximumLevel()
-                + " §7— полного заполнения не требуется.");
+        stateManager.activateComposter(farm);
         updateFarmSoil(farm);
     }
 
@@ -159,63 +132,61 @@ public final class FarmListener implements Listener {
         }
     }
 
+    private FarmStructure findFarmForService(Block service) {
+        for (BlockFace face : SIDES) {
+            Block neighbour = service.getRelative(face);
+            if (neighbour.getType() != Material.FARMLAND) continue;
+            FarmStructure farm = validator.findFarmAt(neighbour);
+            if (farm != null && (service.equals(farm.cauldron()) || service.equals(farm.composter()))) return farm;
+        }
+        return null;
+    }
+
     private void showTargetInfo(Player player) {
         Block target = player.getTargetBlockExact(6);
         if (target == null) return;
-        if (target.getType() != Material.WATER_CAULDRON && target.getType() != Material.CAULDRON && target.getType() != Material.COMPOSTER) return;
+        FarmStructure farm = null;
+        String type = null;
+        if (stateManager.isFarmCauldron(target)) { farm = findFarmForService(target); type = "котёл"; }
+        if (stateManager.isFarmComposter(target)) { farm = findFarmForService(target); type = "компостер"; }
+        if (farm == null || type == null) return;
 
-        FarmStructure farm = validator.findFarmAt(target);
-        if (farm == null) return;
-
-        farmStateManager.refresh(farm);
-        String planted = cropSummary(farm);
-        String resourceInfo;
-        if (target.getType() == Material.COMPOSTER) {
-            resourceInfo = farm.hasFertilizer()
-                    ? "§aКомпостер: " + farm.fertilizerLevel() + "/" + farm.fertilizerMaximumLevel()
-                    : "§cКомпостер: пустой";
-        } else {
-            resourceInfo = farm.isWatered()
-                    ? "§aКотёл: вода " + farm.waterLevel() + "/" + farm.waterMaximumLevel()
-                    : "§cКотёл: нет воды";
-        }
+        stateManager.refresh(farm);
+        int plot = stateManager.getPlotNumber(farm);
+        int planted = plantedCount(farm);
+        String own = type.equals("котёл")
+                ? (farm.isWatered() ? "§aВода: " + farm.waterLevel() + "/" + farm.waterMaximumLevel() : "§cВода: нет")
+                : (farm.hasFertilizer() ? "§aКостная мука: " + farm.fertilizerLevel() + "/" + farm.fertilizerMaximumLevel() : "§cКостная мука: нет");
         String status = farm.isActive() ? "§aАКТИВНО" : "§cНЕ АКТИВНО";
-        String text = "§6RealFarm §7| §fПосажено: §e" + planted + " §7| " + resourceInfo + " §7| Поле: " + status;
+        String text = "§6Участок №" + plot + " §7| §fПашня: §e" + farm.farmlandCount() + " §7| §fПосажено: §e" + planted + " §7| " + own + " §7| " + status;
         player.sendActionBar(LegacyComponentSerializer.legacySection().deserialize(text));
+    }
+
+    private int plantedCount(FarmStructure farm) {
+        int count = 0;
+        for (FarmStructure.BlockPosition position : farm.farmland()) {
+            Block crop = farm.world().getBlockAt(position.x(), position.y() + 1, position.z());
+            if (crop.getBlockData() instanceof Ageable && cropGrowthManager.isManaged(crop)) count++;
+        }
+        return count;
     }
 
     private void refreshNearbyFarmSoil(Player player) {
         int radius = 8;
         Map<String, FarmStructure> farms = new HashMap<>();
-        int centerX = player.getLocation().getBlockX();
-        int centerY = player.getLocation().getBlockY();
-        int centerZ = player.getLocation().getBlockZ();
-
-        for (int x = centerX - radius; x <= centerX + radius; x++) {
-            for (int z = centerZ - radius; z <= centerZ + radius; z++) {
-                for (int y = Math.max(player.getWorld().getMinHeight(), centerY - 2); y <= Math.min(player.getWorld().getMaxHeight() - 1, centerY + 2); y++) {
-                    Block block = player.getWorld().getBlockAt(x, y, z);
-                    if (block.getType() != Material.FARMLAND) continue;
-                    FarmStructure farm = validator.findFarmAt(block);
-                    if (farm != null) farms.putIfAbsent(farm.id(), farm);
-                }
+        int cx = player.getLocation().getBlockX(), cy = player.getLocation().getBlockY(), cz = player.getLocation().getBlockZ();
+        for (int x = cx - radius; x <= cx + radius; x++) for (int z = cz - radius; z <= cz + radius; z++) for (int y = cy - 2; y <= cy + 2; y++) {
+            Block block = player.getWorld().getBlockAt(x, y, z);
+            if (block.getType() == Material.FARMLAND) {
+                FarmStructure farm = validator.findFarmAt(block);
+                if (farm != null) farms.putIfAbsent(farm.id(), farm);
             }
         }
-
-        for (FarmStructure farm : farms.values()) {
-            farmStateManager.refresh(farm);
-            updateFarmSoil(farm);
-        }
+        for (FarmStructure farm : farms.values()) { stateManager.refresh(farm); updateFarmSoil(farm); }
     }
 
     private void updateFarmSoil(FarmStructure farm) {
-        boolean keepWet = farm.isActive();
-        for (int x = farm.minX() + 1; x < farm.maxX(); x++) {
-            for (int z = farm.minZ() + 1; z < farm.maxZ(); z++) {
-                Block block = farm.world().getBlockAt(x, farm.surfaceY(), z);
-                if (block.getType() == Material.FARMLAND) setMoisture(block, keepWet);
-            }
-        }
+        for (FarmStructure.BlockPosition position : farm.farmland()) setMoisture(farm.world().getBlockAt(position.x(), position.y(), position.z()), farm.isActive());
     }
 
     private void setMoisture(Block block, boolean wet) {
@@ -224,53 +195,13 @@ public final class FarmListener implements Listener {
         block.setBlockData(farmland, false);
     }
 
-    private String cropSummary(FarmStructure farm) {
-        Map<Material, Integer> crops = new EnumMap<>(Material.class);
-        for (int x = farm.minX() + 1; x < farm.maxX(); x++) {
-            for (int z = farm.minZ() + 1; z < farm.maxZ(); z++) {
-                Block soil = farm.world().getBlockAt(x, farm.surfaceY(), z);
-                if (soil.getType() != Material.FARMLAND) continue;
-                Block crop = soil.getRelative(org.bukkit.block.BlockFace.UP);
-                if (!(crop.getBlockData() instanceof Ageable) || !cropGrowthManager.isManaged(crop)) continue;
-                crops.merge(crop.getType(), 1, Integer::sum);
-            }
-        }
-        if (crops.isEmpty()) return "нет";
-        List<String> parts = new ArrayList<>();
-        crops.forEach((material, amount) -> parts.add(cropName(material) + " x" + amount));
-        return String.join(", ", parts);
-    }
+    private void consumeOne(Player player, ItemStack item) { if (player.getGameMode() != GameMode.CREATIVE) item.setAmount(item.getAmount() - 1); }
 
-    private String cropName(Material material) {
-        return switch (material) {
-            case WHEAT -> "пшеница";
-            case CARROTS -> "морковь";
-            case POTATOES -> "картофель";
-            case BEETROOTS -> "свёкла";
-            case TORCHFLOWER_CROP -> "торчфлауэр";
-            case PITCHER_CROP -> "кувшиночник";
-            default -> material.name().toLowerCase();
-        };
-    }
-
-    private void consumeOne(Player player, ItemStack item) {
-        if (player.getGameMode() == GameMode.CREATIVE) return;
-        item.setAmount(item.getAmount() - 1);
-    }
-
-    private void notifyNearby(FarmStructure farm, String message) {
-        long now = System.currentTimeMillis();
-        long last = messageCooldown.getOrDefault(farm.id(), 0L);
-        if (now - last < 5_000L) return;
+    private void notifyInactive(FarmStructure farm) {
+        String reason = !farm.hasCauldron() ? "§cНет котла фермы рядом с пашней." : !farm.hasComposter() ? "§cНет компостера фермы рядом с пашней." : !farm.isWatered() ? "§cНет воды в котле фермы." : "§cНет костной муки в компостере фермы.";
+        long now = System.currentTimeMillis(), last = messageCooldown.getOrDefault(farm.id(), 0L);
+        if (now - last < 5000L) return;
         messageCooldown.put(farm.id(), now);
-        double centerX = (farm.minX() + farm.maxX()) / 2.0 + 0.5;
-        double centerZ = (farm.minZ() + farm.maxZ()) / 2.0 + 0.5;
-        for (Player player : farm.world().getPlayers()) {
-            if (Math.abs(player.getLocation().getX() - centerX) <= 12
-                    && Math.abs(player.getLocation().getZ() - centerZ) <= 12
-                    && Math.abs(player.getLocation().getY() - farm.surfaceY()) <= 8) {
-                player.sendMessage(message);
-            }
-        }
+        for (Player player : farm.world().getPlayers()) if (player.getLocation().distanceSquared(farm.world().getBlockAt(farm.minX(), farm.farmland().iterator().next().y(), farm.minZ()).getLocation()) < 20 * 20) player.sendMessage(reason);
     }
 }

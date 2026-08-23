@@ -2,15 +2,17 @@ package me.dagxam.realfarm;
 
 import me.dagxam.realfarm.crop.CropRegistry;
 import me.dagxam.realfarm.farm.CropGrowthManager;
+import me.dagxam.realfarm.farm.FarmItems;
 import me.dagxam.realfarm.farm.FarmStateManager;
 import me.dagxam.realfarm.farm.FarmStructure;
 import me.dagxam.realfarm.farm.FarmValidator;
 import me.dagxam.realfarm.listener.FarmListener;
-import org.bukkit.block.Block;
-import org.bukkit.block.data.Ageable;
+import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class RealFarmPlugin extends JavaPlugin {
@@ -19,98 +21,86 @@ public final class RealFarmPlugin extends JavaPlugin {
     private CropRegistry cropRegistry;
     private CropGrowthManager cropGrowthManager;
     private FarmListener farmListener;
+    private FarmItems farmItems;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
         createManagers();
-
-        farmListener = new FarmListener(validator, farmStateManager, cropGrowthManager);
+        registerRecipes();
+        farmListener = new FarmListener(validator, farmStateManager, cropGrowthManager, farmItems);
         getServer().getPluginManager().registerEvents(farmListener, this);
-
         getServer().getScheduler().runTaskTimer(this, farmStateManager::tick, 200L, 200L);
         getServer().getScheduler().runTaskTimer(this, cropGrowthManager::tick, 100L, 100L);
         getServer().getScheduler().runTaskTimer(this, farmListener::tick, 20L, 20L);
-
-        getLogger().info("RealFarm включён.");
-        getLogger().info("Система замкнутых пашен, котлов, воды и компостеров активна.");
-        getLogger().info("Зарегистрировано культур: " + cropRegistry.enabled().size());
+        getLogger().info("RealFarm включён. Участки любой формы и специальные блоки фермы активны.");
     }
 
     private void createManagers() {
-        int minFarmSize = getConfig().getInt("farm.min-size", 3);
-        int maxFarmSize = getConfig().getInt("farm.max-size", 15);
-        validator = new FarmValidator(minFarmSize, maxFarmSize);
         farmStateManager = new FarmStateManager(this);
+        validator = new FarmValidator(getConfig().getInt("farm.min-size", 3), getConfig().getInt("farm.max-size", 15), farmStateManager);
         cropRegistry = new CropRegistry(getConfig());
         cropGrowthManager = new CropGrowthManager(this, validator, farmStateManager, cropRegistry);
+        farmItems = new FarmItems(this);
+    }
+
+    private void registerRecipes() {
+        NamespacedKey cauldronKey = new NamespacedKey(this, "farm_cauldron_recipe");
+        NamespacedKey composterKey = new NamespacedKey(this, "farm_composter_recipe");
+        getServer().removeRecipe(cauldronKey);
+        getServer().removeRecipe(composterKey);
+
+        ShapedRecipe cauldron = new ShapedRecipe(cauldronKey, farmItems.createCauldron());
+        cauldron.shape("III", "IBI", "III");
+        cauldron.setIngredient('I', Material.IRON_INGOT);
+        cauldron.setIngredient('B', Material.BONE_MEAL);
+        getServer().addRecipe(cauldron);
+
+        ShapedRecipe composter = new ShapedRecipe(composterKey, farmItems.createComposter());
+        composter.shape("PPP", "PBP", "PPP");
+        composter.setIngredient('P', Material.OAK_PLANKS);
+        composter.setIngredient('B', Material.BONE_MEAL);
+        getServer().addRecipe(composter);
     }
 
     @Override
     public void onDisable() {
         if (farmStateManager != null) farmStateManager.save();
         if (cropGrowthManager != null) cropGrowthManager.save();
-        getLogger().info("RealFarm выключен.");
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!command.getName().equalsIgnoreCase("realfarm")) return false;
-
-        if (!sender.hasPermission("realfarm.admin")) {
-            sender.sendMessage("§cУ вас нет прав для этой команды.");
-            return true;
-        }
-
+        if (!sender.hasPermission("realfarm.admin")) { sender.sendMessage("§cУ вас нет прав для этой команды."); return true; }
         if (args.length == 0 || args[0].equalsIgnoreCase("info")) {
             sender.sendMessage("§aRealFarm §7v" + getPluginMeta().getVersion());
-            sender.sendMessage("§7Активное поле требует: §fкотёл с полной водой + полный компостер с костной мукой.");
-            sender.sendMessage("§7Без одного из двух ресурсов поле не активно и пашня высыхает.");
-            sender.sendMessage("§7Зарегистрировано культур: §f" + cropRegistry.enabled().size());
-            sender.sendMessage("§7Проверка пашни: §f/realfarm status");
+            sender.sendMessage("§7Участок может иметь любую форму, главное — связная пашня без разрывов.");
+            sender.sendMessage("§7Котёл фермы и компостер фермы должны стоять вплотную к пашне с любой стороны.");
+            sender.sendMessage("§7Крафт котла: 8 железных слитков вокруг костной муки.");
+            sender.sendMessage("§7Крафт компостера: 8 дубовых досок вокруг костной муки.");
             return true;
         }
-
         if (args[0].equalsIgnoreCase("status")) {
-            if (!(sender instanceof Player player)) {
-                sender.sendMessage("§cЭту команду можно использовать только в игре.");
-                return true;
-            }
-            Block target = player.getTargetBlockExact(10);
-            if (target == null) {
-                sender.sendMessage("§eПосмотрите на блок внутри пашни и повторите команду.");
-                return true;
-            }
-            Block interior = target.getBlockData() instanceof Ageable
-                    ? target.getRelative(org.bukkit.block.BlockFace.DOWN)
-                    : target;
-            FarmStructure farm = validator.findFarmAt(interior);
-            if (farm == null) {
-                sender.sendMessage("§cЗамкнутая пашня не найдена.");
-                return true;
-            }
-
+            if (!(sender instanceof Player player)) { sender.sendMessage("§cТолько в игре."); return true; }
+            var target = player.getTargetBlockExact(10);
+            if (target == null || target.getType() != Material.FARMLAND) { sender.sendMessage("§eПосмотрите на блок пашни участка."); return true; }
+            FarmStructure farm = validator.findFarmAt(target);
+            if (farm == null) { sender.sendMessage("§cУчасток не найден."); return true; }
             farmStateManager.refresh(farm);
-            sender.sendMessage("§aПашня найдена: §f" + (farm.maxX() - farm.minX() + 1) + "×" + (farm.maxZ() - farm.minZ() + 1));
-            sender.sendMessage("§7Котёл: " + (farm.hasCauldron() ? "§aесть" : "§cнет"));
-            sender.sendMessage("§7Вода: " + (farm.isWatered() ? "§aполная" : "§cнет"));
-            sender.sendMessage("§7Компостер: " + (farm.hasComposter() ? (farm.isComposterFull() ? "§aполный" : "§cне заполнен") : "§cне установлен"));
-            sender.sendMessage("§7Состояние поля: " + (farm.isActive() ? "§aАКТИВНО" : "§cНЕ АКТИВНО"));
+            sender.sendMessage("§6Участок №" + farmStateManager.getPlotNumber(farm));
+            sender.sendMessage("§7Блоков пашни: §f" + farm.farmlandCount());
+            sender.sendMessage("§7Котёл фермы: " + (farm.hasCauldron() ? "§aесть" : "§cнет"));
+            sender.sendMessage("§7Компостер фермы: " + (farm.hasComposter() ? "§aесть" : "§cнет"));
+            sender.sendMessage("§7Статус: " + (farm.isActive() ? "§aАКТИВНО" : "§cНЕ АКТИВНО"));
             return true;
         }
-
         if (args[0].equalsIgnoreCase("crops")) {
             sender.sendMessage("§aКультуры RealFarm:");
-            cropRegistry.enabled().forEach(crop -> sender.sendMessage("§7- §f" + crop.displayName() + " §8(" + crop.id() + ")"));
+            cropRegistry.enabled().forEach(crop -> sender.sendMessage("§7- §f" + crop.displayName()));
             return true;
         }
-
-        if (args[0].equalsIgnoreCase("reload")) {
-            reloadConfig();
-            sender.sendMessage("§aКонфигурация перечитана. §eДля применения размеров пашни и списка культур перезапустите плагин/сервер.");
-            return true;
-        }
-
+        if (args[0].equalsIgnoreCase("reload")) { reloadConfig(); sender.sendMessage("§aКонфигурация перечитана."); return true; }
         sender.sendMessage("§eИспользование: /realfarm <info|status|crops|reload>");
         return true;
     }

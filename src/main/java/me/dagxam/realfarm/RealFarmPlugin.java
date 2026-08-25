@@ -6,6 +6,7 @@ import me.dagxam.realfarm.farm.FarmItems;
 import me.dagxam.realfarm.farm.FarmStateManager;
 import me.dagxam.realfarm.farm.FarmStructure;
 import me.dagxam.realfarm.farm.FarmValidator;
+import me.dagxam.realfarm.farm.TreeGrowthManager;
 import me.dagxam.realfarm.listener.FarmListener;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -20,6 +21,7 @@ public final class RealFarmPlugin extends JavaPlugin {
     private FarmStateManager farmStateManager;
     private CropRegistry cropRegistry;
     private CropGrowthManager cropGrowthManager;
+    private TreeGrowthManager treeGrowthManager;
     private FarmListener farmListener;
     private FarmItems farmItems;
 
@@ -28,12 +30,13 @@ public final class RealFarmPlugin extends JavaPlugin {
         saveDefaultConfig();
         createManagers();
         registerRecipes();
-        farmListener = new FarmListener(validator, farmStateManager, cropGrowthManager, farmItems);
+        farmListener = new FarmListener(validator, farmStateManager, cropGrowthManager, treeGrowthManager, farmItems);
         getServer().getPluginManager().registerEvents(farmListener, this);
         getServer().getScheduler().runTaskTimer(this, farmStateManager::tick, 200L, 200L);
         getServer().getScheduler().runTaskTimer(this, cropGrowthManager::tick, 100L, 100L);
+        getServer().getScheduler().runTaskTimer(this, treeGrowthManager::tick, 100L, 100L);
         getServer().getScheduler().runTaskTimer(this, farmListener::tick, 20L, 20L);
-        getLogger().info("RealFarm включён. Участки любой формы и специальные блоки фермы активны.");
+        getLogger().info("RealFarm включён. Участки, культуры и саженцы на пашне RealFarm активны.");
     }
 
     private void createManagers() {
@@ -41,6 +44,7 @@ public final class RealFarmPlugin extends JavaPlugin {
         validator = new FarmValidator(getConfig().getInt("farm.min-size", 3), getConfig().getInt("farm.max-size", 15), farmStateManager);
         cropRegistry = new CropRegistry(getConfig());
         cropGrowthManager = new CropGrowthManager(this, validator, farmStateManager, cropRegistry);
+        treeGrowthManager = new TreeGrowthManager(this, validator, farmStateManager);
         farmItems = new FarmItems(this);
     }
 
@@ -50,14 +54,12 @@ public final class RealFarmPlugin extends JavaPlugin {
         getServer().removeRecipe(cauldronKey);
         getServer().removeRecipe(composterKey);
 
-        // Котёл фермы: железо | костная мука | железо / железо | железо | железо
         ShapedRecipe cauldron = new ShapedRecipe(cauldronKey, farmItems.createCauldron());
         cauldron.shape("IBI", "III");
         cauldron.setIngredient('I', Material.IRON_INGOT);
         cauldron.setIngredient('B', Material.BONE_MEAL);
         getServer().addRecipe(cauldron);
 
-        // Компостер фермы: доски | костная мука | доски / доски | доски | доски
         ShapedRecipe composter = new ShapedRecipe(composterKey, farmItems.createComposter());
         composter.shape("PBP", "PPP");
         composter.setIngredient('P', Material.OAK_PLANKS);
@@ -69,6 +71,7 @@ public final class RealFarmPlugin extends JavaPlugin {
     public void onDisable() {
         if (farmStateManager != null) farmStateManager.save();
         if (cropGrowthManager != null) cropGrowthManager.save();
+        if (treeGrowthManager != null) treeGrowthManager.save();
     }
 
     @Override
@@ -79,8 +82,8 @@ public final class RealFarmPlugin extends JavaPlugin {
             sender.sendMessage("§aRealFarm §7v" + getPluginMeta().getVersion());
             sender.sendMessage("§7Участок может иметь любую форму, главное — связная пашня без разрывов.");
             sender.sendMessage("§7Котёл фермы и компостер фермы должны стоять вплотную к пашне с любой стороны.");
-            sender.sendMessage("§7Крафт котла: железо-костная мука-железо / железо-железо-железо.");
-            sender.sendMessage("§7Крафт компостера: доски-костная мука-доски / доски-доски-доски.");
+            sender.sendMessage("§7Саженец на пашне RealFarm растёт под контролем воды и удобрения.");
+            sender.sendMessage("§7Саженец вне пашни RealFarm использует обычный рост Minecraft.");
             return true;
         }
         if (args[0].equalsIgnoreCase("status")) {
@@ -94,7 +97,7 @@ public final class RealFarmPlugin extends JavaPlugin {
             sender.sendMessage("§7Блоков пашни: §f" + farm.farmlandCount());
             sender.sendMessage("§7Котёл фермы: " + (farm.hasCauldron() ? "§aесть" : "§cнет"));
             sender.sendMessage("§7Компостер фермы: " + (farm.hasComposter() ? "§aесть" : "§cнет"));
-            sender.sendMessage("§7Статус: " + (farm.isActive() ? "§aАКТИВНО" : "§cНЕ АКТИВНО"));
+            sender.sendMessage("§7Статус воды: " + (farm.isWatered() ? "§aесть" : "§cнет"));
             return true;
         }
         if (args[0].equalsIgnoreCase("crops")) {
